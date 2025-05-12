@@ -79,4 +79,29 @@ break;
 }
 
 }
+--------------------NEW----------------
+if (remitStatus != null)
+				{
+					and_operator_temp = true;
+                    switch (remitStatus) {
+                        case "Remittance":
+							RevenueCycleMgmtUtil.createnewSQLFragment("c1.last_era_status IN (" + String.join(",",Collections.nCopies(Constants.ERA_STATUS_PAID.length,"?")) + ")",Types.ARRAY,Constants.ERA_STATUS_PAID,whereClause,setParameters,!and_operator);
+//							RevenueCycleMgmtUtil.create_sql_fragment_no_params(" c1.last_era_status IN (" + getCommaSeparatedValues(Constants.ERA_STATUS_PAID) + ")", whereClause, and_operator);
+                            break;
+                        case "NoRemittance":
+							RevenueCycleMgmtUtil.createnewSQLFragment("c1.last_era_status not IN (" + String.join(",",Collections.nCopies(Constants.ERA_STATUS_PAID.length,"?")) + ")",Types.ARRAY,Constants.ERA_STATUS_PAID,whereClause,setParameters,!and_operator);
+//							RevenueCycleMgmtUtil.create_sql_fragment_no_params(" (c1.last_era_status not IN (" + getCommaSeparatedValues(Constants.ERA_STATUS_PAID) + ") OR c1.last_era_status IS NULL)", whereClause, and_operator);
+                            break;
+                        case "ZeroPaid":
+                            RevenueCycleMgmtUtil.getWhereClauseFragment(whereClause, setParameters, !and_operator, Types.VARCHAR, "c1.last_era_status = ?", Constants.ERA_STATUS_ZERO_PAID);
+                            break;
+                        case "NonZeroPaid":
+                            RevenueCycleMgmtUtil.getWhereClauseFragment(whereClause, setParameters, !and_operator, Types.VARCHAR, "c1.last_era_status = ?", Constants.ERA_STATUS_NON_ZERO_PAID);
+                            break;
+                        default:
+                            and_operator_temp = and_operator;
+                            break;
+                    }
+					and_operator = and_operator_temp;
+				}
 
