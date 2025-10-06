@@ -1,0 +1,72 @@
+ public string IdQualifier   = "";
+        /// <summary>REF02</summary>
+        public string IdCode        = "";
+        /// <summary>REF03</summary>
+        public string Description   = "";
+        /// <summary>REF04</summary>
+        public string OtherPayerId  = "";
+
+ public string AmountQualifierCode = "";
+
+ public class SVC: Segment
+    {
+        public ProcedureIdentifier Procedure            = new ProcedureIdentifier();
+        public DecimalField ChargeAmount                = new DecimalField();
+        public DecimalField PaymentAmount               = new DecimalField();
+        public string RevenueCode                       = "";
+        public DecimalField UnitsOfServicePaidCount     = new DecimalField();
+        public ProcedureIdentifier OriginalProcedure    = new ProcedureIdentifier();
+        public DecimalField OriginalUnitsOfServiceCount = new DecimalField();
+
+        public SVC () { }
+        public SVC (string name) : base(name) { } 
+
+        public static SVC Parse(TokenizedSegment elements)
+        {
+            SVC svc = new SVC();
+
+            svc.Procedure = ProcedureIdentifier.Parse(elements.SubField(1));
+            svc.ChargeAmount.ParsedValue                = elements[2];
+            svc.PaymentAmount.ParsedValue               = elements[3];
+            svc.RevenueCode                             = elements[4];
+            svc.UnitsOfServicePaidCount.ParsedValue     = elements[5];
+            svc.OriginalProcedure = ProcedureIdentifier.Parse(elements.SubField(6));
+            svc.OriginalUnitsOfServiceCount.ParsedValue = elements[7];
+
+            return svc;
+        }
+
+        public override void Encode(X12StringEncoderStrategy encoder)
+        {
+            encoder.AppendField(SegmentId);
+            
+            Procedure.Encode(encoder);
+
+            encoder.AppendField(ChargeAmount);
+            encoder.AppendField(PaymentAmount);
+            encoder.AppendField(RevenueCode);
+            encoder.AppendField(UnitsOfServicePaidCount);
+
+            OriginalProcedure.Encode(encoder);
+            
+            encoder.AppendField(OriginalUnitsOfServiceCount);
+        }
+
+
+ public string Address1 = String.Empty;
+        public string Address2 = String.Empty;
+
+
+
+    public class N4 : Segment
+    {
+        /// <summary>N401</summary>
+        public string City      = String.Empty;
+        /// <summary>N402</summary>
+        public string State     = String.Empty;
+        /// <summary>N403</summary>
+        public string Zip       = String.Empty;
+        /// <summary>N404</summary>
+        public string Country   = String.Empty;
+        /// <summary>N407</summary>
+        public string CountrySubdivision = String.Empty;
