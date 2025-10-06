@@ -30,8 +30,9 @@ namespace CSVRealtimeParser276
             timer.Start();
 
             // ---------- CONFIGURATION ----------
-            string csv276File = "C:\\Users\\YourUser\\CsvToX12\\276.csv";
-            string outputDir = "C:\\Users\\YourUser\\CsvToX12\\Output\\";
+            string csv276File = "C:\\Users\\slikhith\\CsvToX12\\Portal_87726_test_csi.csv";
+            string outputDir = "C:\\Users\\slikhith\\Documents\\creates-276.";
+
             Directory.CreateDirectory(outputDir);
 
             string defaultHeader =
