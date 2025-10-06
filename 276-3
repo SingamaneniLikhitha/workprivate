@@ -38,25 +38,22 @@ namespace CSVRealtimeParser276
                 "PayerID,PayerName,ClaimDateFrom,ClaimDateTo,ClaimAmount,ServiceCode,TraceNumber";
 
             // ---------- BASE X12 TEMPLATE ----------
-            string base276Template =
-                "ISA*00*          *00*          *ZZ*770545613      *ZZ*770545613      *990101*1200*^*00501*123456789*0*P*:~" +
-                "GS*HR*770545613*XXXXXXXXX*20990101*1200*12345*X*005010X212~" +
-                "ST*276*0001*005010X212~" +
-                "BHT*0010*13*12345*20290101*1200~" +
-                "HL*1**20*1~" +
-                "NM1*PR*2*XXXXX*****PI*XXXXX~" +          // Payer
-                "HL*2*1*21*1~" +
-                "NM1*41*2*XXXXX*****46*XXXXXXX~" +        // Provider
-                "HL*3*2*19*1~" +
-                "NM1*1P*2******XX*XXXXXXXXX~" +           // Service Provider
-                "HL*4*3*22*0~" +
-                "NM1*IL*1*XXXXX*XXXXXX****MI*XXXXXXXX~" + // Patient/Insured
-                "TRN*1*XXXXXX*CLAIMTRACE~" +             // Trace Number
-                "REF*1K*CLAIMNUMBER~" +
-                "DTP*472*RD8*20250101-20250115~" +
-                "SE*16*0001~" +
-                "GE*1*12345~" +
-                "IEA*1*123456789~";
+           string base276Template =
+"ISA*00*          *00*          *ZZ*SENDERID       *ZZ*RECEIVERID     *250101*1200*^*00501*000000001*0*P*:~" +
+"GS*HR*SENDERID*RECEIVERID*20250101*1200*1*X*005010X212~" +
+"ST*276*0001*005010X212~" +
+"BHT*0010*13*12345*20250101*1200~" +
+"HL*1**20*1~" +
+"NM1*PR*2*PAYER*****PI*PAYERID~" +
+"HL*2*1*21*1~" +
+"NM1*41*2*PROVIDER*****46*PROVIDID~" +
+"HL*3*2*22*0~" +
+"NM1*IL*1*LAST*FIRST****MI*MEMBER~" +
+"DTP*472*RD8*20250101-20250115~" +
+"SE*10*0001~" +
+"GE*1*1~" +
+"IEA*1*000000001~";
+
 
             // ---------- READ CSV ----------
             string jsonOutput = ParseCSVToJson(csv276File, defaultHeader);
@@ -70,7 +67,18 @@ namespace CSVRealtimeParser276
             {
                 foreach (JsonElement record in csvJson.RootElement.EnumerateArray())
                 {
-                    var x12Data = x12Parser.ParseString(base276Template);
+                    X12Data x12Data = null;
+try
+{
+    x12Data = x12Parser.ParseString(base276Template);
+}
+catch (Exception ex)
+{
+    Console.WriteLine("❌ Exception while parsing X12 template:");
+    Console.WriteLine(ex.Message);
+    return; // stop execution early
+}
+
                     var interChanges = x12Data.Interchanges;
                     x12Message = new X12Message();
 
