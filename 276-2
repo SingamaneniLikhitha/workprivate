@@ -253,3 +253,13 @@ namespace CSVRealtimeParser
         }
     }
 }
+
+
+  C:\Users\slikhith\CsvToX12\Program.cs(90,41): error CS1061: 'BHT' does not contain a definition for 'ReferenceId' and no accessible extension method 'ReferenceId' accepting a first argument of type 'BHT' could be found (are you missing a using directive or an assembly reference?)
+    C:\Users\slikhith\CsvToX12\Program.cs(167,45): error CS0117: 'SVC' does not contain a definition for 'ProcedureCode'
+    C:\Users\slikhith\CsvToX12\Program.cs(168,60): error CS0029: Cannot implicitly convert type 'string' to 'Domain.X12.Fields.DecimalField'
+    C:\Users\slikhith\CsvToX12\Program.cs(177,45): error CS0117: 'AMT' does not contain a definition for 'Qualifier'
+    C:\Users\slikhith\CsvToX12\Program.cs(178,45): error CS0117: 'AMT' does not contain a definition for 'Amount'
+
+why do you think these errors are ccoming
+
