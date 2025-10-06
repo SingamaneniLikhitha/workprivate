@@ -1,0 +1,613 @@
+package com.capario.phoenix.edi.maps;
+
+import java.util.Calendar;
+
+import com.capario.ediparsing.EDIDocument;
+import com.capario.ediparsing.EDIReaderHelper;
+import com.capario.util.edi.mapping.Converter;
+import com.capario.util.edi.mapping.utils.EDIParserUtils;
+import com.capario.util.edi.parsers.EmdeonOfficeCSVImportFormat;
+import com.capario.ediparsing.*;
+
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.StringTokenizer;
+import java.util.TreeSet;
+
+
+public class EOCSIReqCSVToX122765010 implements Converter {
+
+	EDIDocument X128375010document = null;
+    EDIDocument X122765010document = null;
+    EDIParserUtils pu = new EDIParserUtils();
+    EmdeonOfficeCSVImportFormat eoCSV = new EmdeonOfficeCSVImportFormat();
+    
+	private SimpleDateFormat m_dateFormat_yyyyMMdd = new SimpleDateFormat("yyyyMMdd");	
+	private SimpleDateFormat m_dateFormat_yyyMMdd  = new SimpleDateFormat("yyyyMMdd");
+    private SimpleDateFormat m_dateFormat_yyMMdd   = new SimpleDateFormat("yyMMdd");
+    
+    String relationshipCode = "";
+    boolean isDependent = false;
+    
+    
+    
+//	@Override
+	public EDIDocument map(EDIDocument x12document) throws Exception {
+		return null;
+	}
+    
+	
+//	@Override
+	public EDIDocument map(String csv) throws Exception {
+		// create an empty 276 5010 EDI document.
+        X122765010document = EDIReaderHelper.createEDI("276", "5010");
+        
+        X122765010document.parse(EDIParserUtils.getEDITemplate("276", "5010"));
+        
+        eoCSV.parse(csv);
+        
+        
+        // call loop mapping methods.
+		setHeaders();
+		setInformationSource();       //map 2000A 
+		setInformationReceiver();     //map 2000B 
+		setServiceProvider();         //map 2000C  
+		setDetail();                  //map 2000D (subscriber) / 2000E (dependent)
+        
+        return X122765010document;
+	}
+
+
+
+	private void setHeaders() throws Exception {
+
+		X12LoopNode envelope276 = X122765010document.getLoops("Envelope", 0)[0];
+
+		java.util.Date Date = new java.util.Date();
+		SimpleDateFormat ShortYear = new SimpleDateFormat("yyMMdd");
+		SimpleDateFormat LongYear = new SimpleDateFormat("yyyyMMdd");
+		SimpleDateFormat Time = new SimpleDateFormat("hhmm");
+		String ShortDate = ShortYear.format(Date);
+		String LongDate = LongYear.format(Date);
+		String currentTime = Time.format(Date);
+		SimpleDateFormat uniqueID = new SimpleDateFormat("DmmS");
+		String ctrlNum = (uniqueID.format(Date) + "00000").substring(0, 9);
+
+		// ISA segment
+		X12SegmentNode ISA    = envelope276.getSegments("ISA")[0];
+		ISA.setAnsiElement("09", ShortDate);                        //ISA09
+		ISA.setAnsiElement("10", currentTime);                      //ISA10
+		ISA.setAnsiElement("11", "^");			                    //ISA11
+		ISA.setAnsiElement("12", "00501");      	                //ISA12
+		ISA.setAnsiElement("13", ctrlNum);                          //ISA13
+
+		// IEA segment
+		X12SegmentNode IEA = envelope276.getSegments("IEA")[0];
+		IEA.setAnsiElement("02", ctrlNum);                          //IEA02
+
+		// GS segment
+		X12SegmentNode GS = envelope276.getSegments("GS")[0];
+		GS.setAnsiElement("04", LongDate);                          //GS04 - CCYYYMMDD
+		GS.setAnsiElement("05", currentTime);                       //GS05 - HHMM
+		GS.setAnsiElement("06", ctrlNum);                           //GS06
+		GS.setAnsiElement("08", "005010X212");                      //GS08
+
+		// GE segment
+		X12SegmentNode GE = envelope276.getSegments("GE")[0];
+		GE.setAnsiElement("02", ctrlNum);                           //GE02
+
+		// BHT segment
+		X12SegmentNode BHT = envelope276.getSegments("BHT")[0];
+		BHT.setAnsiElement("01", "0010");                           //BHT01 
+		BHT.setAnsiElement("02", "13");                             //BHT02 
+        if ((eoCSV.getField("PAN") != null) && (eoCSV.getField("PAN").length() > 0)) {
+            BHT.setAnsiElement("03", eoCSV.getField("PAN")); // BHT03 Account No
+        }
+        else {
+        	BHT.setAnsiElement("03", ctrlNum);
+        }
+		BHT.setAnsiElement("04", LongDate);                         //BHT04
+		BHT.setAnsiElement("05", currentTime);                      //BHT05
+	}
+
+	private void setInformationSource() throws Exception {
+
+		X12LoopNode[] l2100A = X122765010document.getLoops("2100A");          //276
+		
+		X12SegmentNode NM1276 = l2100A[0].getSegments("NM1")[0];
+		NM1276.setAnsiElement("01", "PR");
+        if ((eoCSV.getField("PayerID") != null) && (eoCSV.getField("PayerID").length() > 0)) {
+        	NM1276.setAnsiElement("03", eoCSV.getField("PayerID")); 
+        }
+		NM1276.setAnsiElement("08", "PI");	
+        if ((eoCSV.getField("PayerID") != null) && (eoCSV.getField("PayerID").length() > 0)) {
+        	NM1276.setAnsiElement("09", eoCSV.getField("PayerID")); 
+        }
+		
+	}
+	
+	private void setInformationReceiver() throws Exception {
+
+		X12LoopNode[] l2100B = X122765010document.getLoops("2100B");          //276
+		
+		X12SegmentNode NM1276 = l2100B[0].getSegments("NM1")[0];
+		NM1276.setAnsiElement("01", "41");
+        if ((eoCSV.getField("ProviderLN") != null) && (eoCSV.getField("ProviderLN").length() > 0)) {
+        	NM1276.setAnsiElement("03", eoCSV.getField("ProviderLN")); // "PracticeName - Last"
+        }
+        if ((eoCSV.getField("ProviderFN") != null) && (eoCSV.getField("ProviderFN").length() > 0)) {
+        	NM1276.setAnsiElement("04", eoCSV.getField("ProviderFN")); // "PracticeName - First"
+        }
+        else
+        {
+        	NM1276.setAnsiElement("02", "2");
+        }
+        NM1276.setAnsiElement("08", "46");							// "Prov ID Type"
+        NM1276.setAnsiElement("09", eoCSV.getField("ProviderID"));	// "Prov ID" 
+	}
+	
+	private void setServiceProvider() throws Exception {
+
+		X12LoopNode[] l2100C = X122765010document.getLoops("2100C");          //276
+		
+		X12SegmentNode NM1276 = l2100C[0].getSegments("NM1")[0];
+		NM1276.setAnsiElement("01", "1P");
+        if ((eoCSV.getField("ServiceProvider1LN") != null) && (eoCSV.getField("ServiceProvider1LN").length() > 0)) {
+        	NM1276.setAnsiElement("03", eoCSV.getField("ServiceProvider1LN")); // "Service Provider Name - Last"
+        }	
+        if ((eoCSV.getField("ServiceProvider1FN") != null) && (eoCSV.getField("ServiceProvider1FN").length() > 0)) {
+        	NM1276.setAnsiElement("04", eoCSV.getField("ServiceProvider1FN")); // "Service Provider Name - First"
+        }		
+        
+        String provNM108 = "XX";
+        String provIDType = eoCSV.getField("ServiceProvider1IDType"); // "Prov ID Type"
+        String provID     = eoCSV.getField("ServiceProvider1ID"); // "Prov ID" 
+        
+        if ((provIDType != null) && (provID != null)) 
+        {
+        	if (provIDType.equalsIgnoreCase("T")) {
+        		provNM108 = "FI";
+        	}
+        	if (provIDType.equalsIgnoreCase("P")) {
+        		provNM108 = "SV";
+        	}
+            	NM1276.setAnsiElement("08", provNM108);
+            	NM1276.setAnsiElement("09", provID);
+        }
+        
+	}
+	
+	private void setDetail() throws Exception {
+		
+        if ((eoCSV.getField("RelCode") != null) && (eoCSV.getField("RelCode").length() > 0)) {
+        	relationshipCode     = eoCSV.getField("RelCode"); // "Prov ID" 
+        }
+        else
+        {
+        	relationshipCode = "18";
+        }
+		
+        if (!relationshipCode.equalsIgnoreCase("18")) {             //837
+            isDependent = true;
+        }
+
+        setSubscriber();   //Loop 2000D
+
+        if (isDependent) {
+            setDependent();    //Loop 2000E
+        }
+    }	
+		
+	private void setSubscriber() throws Exception {	
+			
+		X12LoopNode[] l2000D = X122765010document.getLoops("2000D");          //276
+		X12LoopNode[] l2100D = X122765010document.getLoops("2100D");          //276  
+		
+		
+        //276 2100D - NM1
+        X12SegmentNode NM1276 = l2100D[0].getSegments("NM1")[0];
+        NM1276.setAnsiElement("01", "IL");
+        if ((eoCSV.getField("LN") != null) && (eoCSV.getField("LN").length() > 0)) {
+        	NM1276.setAnsiElement("03", eoCSV.getField("LN")); // "Subscriber name - Last"
+        }	
+        if ((eoCSV.getField("FN") != null) && (eoCSV.getField("FN").length() > 0)) {
+        	NM1276.setAnsiElement("04", eoCSV.getField("FN")); // "Subscriber Name - First"
+        }	
+        if ((eoCSV.getField("MI") != null) && (eoCSV.getField("MI").length() > 0)) {
+        	NM1276.setAnsiElement("05", eoCSV.getField("MI")); // "Subscriber MI"
+        }	
+        NM1276.setAnsiElement("06", "");
+        if ((eoCSV.getField("Suffix") != null) && (eoCSV.getField("Suffix").length() > 0)) {
+        	NM1276.setAnsiElement("07", eoCSV.getField("Suffix")); // "Subscriber Suffix"
+        }	
+
+        if ((eoCSV.getField("MemberID") != null) && (eoCSV.getField("MemberID").length() > 0)) {
+            NM1276.setAnsiElement("08", "MI");
+        	NM1276.setAnsiElement("09", eoCSV.getField("MemberID")); // "Member ID"
+        }	
+        
+        String holdDOB      = "";
+        String formattedDOB = "";
+
+        if (!isDependent) {       // build all the supporting loops that can only appear once per transaction
+        	
+            if ((eoCSV.getField("DOB") != null) && (eoCSV.getField("DOB").length() > 0)) {
+            	holdDOB=eoCSV.getField("DOB");
+            	if ((holdDOB.length() == 8) && (pu.isNumeric(holdDOB))) {
+            		formattedDOB = pu.formatDates("", holdDOB, "MMddyyyy", "yyyyMMdd");
+            	}
+            }
+        	
+            if (formattedDOB.length() > 0) {
+                X12SegmentNode NM1276DMG = l2000D[0].addSegment("DMG")[0];
+                NM1276DMG.setAnsiElement("01", "D8");
+            	NM1276DMG.setAnsiElement("02", formattedDOB); // "Subscriber DOB"
+            	
+                if ((eoCSV.getField("Gender") != null) && (eoCSV.getField("Gender").length() > 0)) {
+                	NM1276DMG.setAnsiElement("03", eoCSV.getField("Gender")); // "Subscriber Gender"
+                }	
+            }	
+
+
+            //276 2200D - TRN
+            X122765010document.addLoop("2000D", 0, "", "2200D");
+            X12LoopNode[] l2200D = X122765010document.getLoops("2200D");
+
+            if ((eoCSV.getField("PAN") != null) && (eoCSV.getField("PAN").length() > 0)) {
+                X12SegmentNode[] TRN = l2200D[0].addSegment("TRN");
+                TRN[0].setAnsiElement("01", "1");
+            	TRN[0].setAnsiElement("02", eoCSV.getField("PAN"));  // "Patient Account Number"
+            }	
+            
+             if ((eoCSV.getField("RequestNumber") != null) && (eoCSV.getField("RequestNumber").length() > 0)) {
+                X12SegmentNode[] REF1K = l2200D[0].addSegment("REF");
+                REF1K[0].setAnsiElement("01", "1K");
+            	REF1K[0].setAnsiElement("02", eoCSV.getField("RequestNumber"));  // "Request Number"
+            }	
+            
+            if ((eoCSV.getField("FacilityType") != null) && (eoCSV.getField("FacilityType").length() > 0) &&
+            	(eoCSV.getField("ClaimStatus") != null) && (eoCSV.getField("ClaimStatus").length() > 0)) 
+            {
+                X12SegmentNode[] REFBLT = l2200D[0].addSegment("REF");
+                REFBLT[0].setAnsiElement("01", "BLT");
+            	String billTypeID = eoCSV.getField("FacilityType") + eoCSV.getField("ClaimStatus");
+            	REFBLT[0].setAnsiElement("02", billTypeID);  
+            }	
+
+            if ((eoCSV.getField("FacilityType") != null) && (eoCSV.getField("FacilityType").length() > 0)) {
+                X12SegmentNode[] REFLU = l2200D[0].addSegment("REF");
+                REFLU[0].setAnsiElement("01", "LU");
+            	REFLU[0].setAnsiElement("02", eoCSV.getField("FacilityType"));  // "Facility Type"
+            }	
+            
+            if ((eoCSV.getField("Group") != null) && (eoCSV.getField("Group").length() > 0)) {
+                X12SegmentNode[] REF6P = l2200D[0].addSegment("REF");
+                REF6P[0].setAnsiElement("01", "6P");
+            	REF6P[0].setAnsiElement("02", eoCSV.getField("Group"));  // "Group"
+            }	
+            
+            if ((eoCSV.getField("PAN") != null) && (eoCSV.getField("PAN").length() > 0)) {
+                X12SegmentNode[] REFEJ = l2200D[0].addSegment("REF");
+                REFEJ[0].setAnsiElement("01", "EJ");
+            	REFEJ[0].setAnsiElement("02", eoCSV.getField("PAN"));  // "Patient Account Number"
+            }	
+            
+            //276 2200D - AMT*T3
+            
+            if ((eoCSV.getField("TotalSubmittedCharges") != null) && (eoCSV.getField("TotalSubmittedCharges").length() > 0)) {
+            	X12SegmentNode[] AMT = l2200D[0].addSegment("AMT", "T3");
+            	AMT[0].setAnsiElement("02", eoCSV.getField("TotalSubmittedCharges"));
+            }
+
+            //276 2200D - DTP (Claim Service Date)
+            
+            String startDate = "";
+            String endDate = "";
+            String holdDate = "";
+            
+            if ((eoCSV.getField("StartDate") != null) && (eoCSV.getField("StartDate").length() > 0)) {
+            	holdDate=eoCSV.getField("StartDate");
+            	if ((holdDate.length() == 8) && (pu.isNumeric(holdDate))) {
+            		startDate = pu.formatDates("", holdDate, "MMddyyyy", "yyyyMMdd");
+            	}
+            }
+            if ((eoCSV.getField("EndDate") != null) && (eoCSV.getField("EndDate").length() > 0)) {
+            	holdDate=eoCSV.getField("EndDate");
+            	if ((holdDate.length() == 8) && (pu.isNumeric(holdDate))) {
+            		endDate = pu.formatDates("", holdDate, "MMddyyyy", "yyyyMMdd");
+            	}
+            }
+            if (startDate.length() > 0 && endDate.length() >0) {            
+            	String range = startDate + "-" + endDate;
+            		X12SegmentNode[] DTP = l2200D[0].addSegment("DTP");
+            		DTP[0].setAnsiElement("01", "472");
+            		DTP[0].setAnsiElement("02", "RD8");
+            		DTP[0].setAnsiElement("03", range);
+            }
+            if (startDate.length() > 0 && (!(endDate.length() > 0))) {            
+            	String range = startDate;
+            		X12SegmentNode[] DTP = l2200D[0].addSegment("DTP");
+            		DTP[0].setAnsiElement("01", "472");
+            		DTP[0].setAnsiElement("02", "D8");
+            		DTP[0].setAnsiElement("03", range);
+            }
+            
+            X122765010document.addLoop("2200D", 0, "", "2210D");
+            X12LoopNode[] l2210D = X122765010document.getLoops("2210D");          //276      
+            X12SegmentNode[] SVC = l2210D[0].addSegment("SVC");
+            
+            String SVC011 = "";
+            String SVC012 = "";
+            String SVC013 = "";
+            if ((eoCSV.getField("ProcCodeQualifier") != null) && (eoCSV.getField("ProcCodeQualifier").length() > 0)) {
+            	SVC011 = eoCSV.getField("ProcCodeQualifier");
+            }	
+            if ((eoCSV.getField("ProcCodes") != null) && (eoCSV.getField("ProcCodes").length() > 0)) {
+            	SVC012 = eoCSV.getField("ProcCodes");
+            }	
+            if ((eoCSV.getField("ProcCodeModifier") != null) && (eoCSV.getField("ProcCodeModifier").length() > 0)) {
+            	SVC013 = eoCSV.getField("ProcCodeModifier");
+            }	
+            
+            SVC[0].setAnsiSubElement("01", "1", SVC011);
+            SVC[0].setAnsiSubElement("01", "2", SVC012);
+            SVC[0].setAnsiSubElement("01", "3", SVC013);
+            
+            if ((eoCSV.getField("LineItemChargeAmount") != null) && (eoCSV.getField("LineItemChargeAmount").length() > 0)) {
+            	SVC[0].setAnsiElement("02", eoCSV.getField("LineItemChargeAmount")); 
+            }	
+            if ((eoCSV.getField("ProcCodes") != null) && (eoCSV.getField("ProcCodes").length() > 0)) {
+            	SVC[0].setAnsiElement("04", eoCSV.getField("ProcCodes"));  
+            }	
+            if ((eoCSV.getField("ProcUnits") != null) && (eoCSV.getField("ProcUnits").length() > 0)) {
+            	SVC[0].setAnsiElement("07", eoCSV.getField("ProcUnits")); 
+            }	
+            
+            if ((eoCSV.getField("ServiceLineNumber") != null) && (eoCSV.getField("ServiceLineNumber").length() > 0)) {
+                X12SegmentNode[] REFFJ = l2210D[0].addSegment("REF");
+                REFFJ[0].setAnsiElement("01", "FJ");
+            	REFFJ[0].setAnsiElement("02", eoCSV.getField("ServiceLineNumber"));  // "Service Line Number"
+            }	
+            
+            if ((eoCSV.getField("ProcDates") != null) && (eoCSV.getField("ProcDates").length() > 0)) {
+                String procDate = "";
+            	holdDate=eoCSV.getField("ProcDates");
+            	if ((holdDate.length() == 8) && (pu.isNumeric(holdDate))) {
+            		procDate = pu.formatDates("", holdDate, "MMddyyyy", "yyyyMMdd");
+                    X12SegmentNode[] SVCDTP = l2210D[0].addSegment("DTP");
+                    SVCDTP[0].setAnsiElement("01", "472");
+                    SVCDTP[0].setAnsiElement("02", "D8");
+                    SVCDTP[0].setAnsiElement("03", procDate);  // "Procedure Date"
+            	}
+            	
+            }	            
+        }	
+    }
+
+	private void setDependent() throws Exception {
+		
+		X12LoopNode[] l2000E = X122765010document.addLoop("Envelope", 0, "2000D", "2000E");			
+
+		//276 2000E HL
+		X12SegmentNode HL276 = l2000E[0].addSegment("HL")[0];
+		HL276.setAnsiElement("01", "4");
+		HL276.setAnsiElement("02", "2");
+		HL276.setAnsiElement("03", "23");
+		HL276.setAnsiElement("04", "0");			
+
+        String holdDepDOB = "";
+        String formattedDepDOB = "";
+
+        X12SegmentNode NM1276DMG = l2000E[0].addSegment("DMG")[0];
+        if ((eoCSV.getField("DependentDOB") != null) && (eoCSV.getField("DependentDOB").length() > 0)) {
+           	holdDepDOB=eoCSV.getField("DependentDOB");
+           	if ((holdDepDOB.length() == 8) && (pu.isNumeric(holdDepDOB))) {
+           		formattedDepDOB = pu.formatDates("", holdDepDOB, "MMddyyyy", "yyyyMMdd");
+           	}
+        }
+        	
+        if (formattedDepDOB.length() > 0) {
+            NM1276DMG.setAnsiElement("01", "D8");
+           	NM1276DMG.setAnsiElement("02", formattedDepDOB); // "Subscriber DOB"
+           	
+            if ((eoCSV.getField("DependentGender") != null) && (eoCSV.getField("DependentGender").length() > 0)) {
+                NM1276DMG.setAnsiElement("03", eoCSV.getField("DependentGender")); // "Dependent Gender"
+            }
+           	
+        }
+            	
+		//276 2100E NM1
+		X12LoopNode[] l2100E = X122765010document.addLoop("2000E", 0, "", "2100E");
+		
+		X12SegmentNode NM1276 = l2100E[0].addSegment("NM1")[0];
+		
+		NM1276.setAnsiElement("01", "QC");
+		NM1276.setAnsiElement("02", "1");
+		
+        if ((eoCSV.getField("DependentLN") != null) && (eoCSV.getField("DependentLN").length() > 0)) {
+        	NM1276.setAnsiElement("03", eoCSV.getField("DependentLN")); // "Subscriber name - Last"
+        }	
+        if ((eoCSV.getField("DependentFN") != null) && (eoCSV.getField("DependentFN").length() > 0)) {
+        	NM1276.setAnsiElement("04", eoCSV.getField("DependentFN")); // "Subscriber Name - First"
+        }	
+        if ((eoCSV.getField("DependentMI") != null) && (eoCSV.getField("DependentMI").length() > 0)) {
+        	NM1276.setAnsiElement("05", eoCSV.getField("DependentMI")); // "Subscriber MI"
+        }	
+		NM1276.setAnsiElement("06", "");
+		NM1276.setAnsiElement("08", "");
+		NM1276.setAnsiElement("09", "");
+
+		X12LoopNode[] l2200E = X122765010document.addLoop("2000E", 0, "", "2200E");                              //@DRH01          
+
+		//276 2200E - TRN			
+        if ((eoCSV.getField("PAN") != null) && (eoCSV.getField("PAN").length() > 0)) {
+    		X12SegmentNode[] TRN = l2200E[0].addSegment("TRN");
+    		TRN[0].setAnsiElement("01", "1");
+        	TRN[0].setAnsiElement("02", eoCSV.getField("PAN"));  // "Patient Account Number"
+        }
+        
+
+        if ((eoCSV.getField("RequestNumber") != null) && (eoCSV.getField("RequestNumber").length() > 0)) {
+            X12SegmentNode[] REF1K = l2200E[0].addSegment("REF");
+            REF1K[0].setAnsiElement("01", "1K");
+        	REF1K[0].setAnsiElement("02", eoCSV.getField("RequestNumber"));  // "Request Number"
+        }	
+        
+
+        if ((eoCSV.getField("FacilityType") != null) && (eoCSV.getField("FacilityType").length() > 0) &&
+        	(eoCSV.getField("ClaimStatus") != null) && (eoCSV.getField("ClaimStatus").length() > 0)) 
+        {
+            X12SegmentNode[] REFBLT = l2200E[0].addSegment("REF");
+            REFBLT[0].setAnsiElement("01", "BLT");
+        	String billTypeID = eoCSV.getField("FacilityType") + eoCSV.getField("ClaimStatus");
+        	REFBLT[0].setAnsiElement("02", billTypeID);  
+        }	
+
+
+        if ((eoCSV.getField("FacilityType") != null) && (eoCSV.getField("FacilityType").length() > 0)) {
+            X12SegmentNode[] REFLU = l2200E[0].addSegment("REF");
+            REFLU[0].setAnsiElement("01", "LU");
+        	REFLU[0].setAnsiElement("02", eoCSV.getField("FacilityType"));  // "Facility Type"
+        }	
+
+        if ((eoCSV.getField("Group") != null) && (eoCSV.getField("Group").length() > 0)) {
+            X12SegmentNode[] REF6P = l2200E[0].addSegment("REF");
+            REF6P[0].setAnsiElement("01", "6P");
+        	REF6P[0].setAnsiElement("02", eoCSV.getField("Group"));  // "Group"
+        }	
+
+        if ((eoCSV.getField("PAN") != null) && (eoCSV.getField("PAN").length() > 0)) {
+            X12SegmentNode[] REFEJ = l2200E[0].addSegment("REF");
+            REFEJ[0].setAnsiElement("01", "EJ");
+        	REFEJ[0].setAnsiElement("02", eoCSV.getField("PAN"));  // "Patient Account Number"
+        }	
+
+		//276 2200E - AMT*T3		
+        if ((eoCSV.getField("TotalSubmittedCharges") != null) && (eoCSV.getField("TotalSubmittedCharges").length() > 0)) {
+        	X12SegmentNode[] AMT = l2200E[0].addSegment("AMT", "T3");
+        	AMT[0].setAnsiElement("02", eoCSV.getField("TotalSubmittedCharges"));
+        }
+
+		//276 2200E - DTP (Claim Service Date)
+        
+        String startDate = "";
+        String endDate = "";
+        String holdDate = "";
+        
+        if ((eoCSV.getField("StartDate") != null) && (eoCSV.getField("StartDate").length() > 0)) {
+        	holdDate=eoCSV.getField("StartDate");
+        	if ((holdDate.length() == 8) && (pu.isNumeric(holdDate))) {
+        		startDate = pu.formatDates("", holdDate, "MMddyyyy", "yyyyMMdd");
+        	}
+        }
+        if ((eoCSV.getField("EndDate") != null) && (eoCSV.getField("EndDate").length() > 0)) {
+        	holdDate=eoCSV.getField("EndDate");
+        	if ((holdDate.length() == 8) && (pu.isNumeric(holdDate))) {
+        		endDate = pu.formatDates("", holdDate, "MMddyyyy", "yyyyMMdd");
+        	}
+        }
+        if (startDate.length() > 0 && endDate.length() >0) {            
+        	String range = startDate + "-" + endDate;
+        		X12SegmentNode[] DTP = l2200E[0].addSegment("DTP");
+        		DTP[0].setAnsiElement("01", "472");
+        		DTP[0].setAnsiElement("02", "RD8");
+        		DTP[0].setAnsiElement("03", range);
+        }
+        if (startDate.length() > 0 && (!(endDate.length() > 0))) {            
+        	String range = startDate;
+        		X12SegmentNode[] DTP = l2200E[0].addSegment("DTP");
+        		DTP[0].setAnsiElement("01", "472");
+        		DTP[0].setAnsiElement("02", "D8");
+        		DTP[0].setAnsiElement("03", range);
+        }
+        
+        X122765010document.addLoop("2200E", 0, "", "2210E");
+        X12LoopNode[] l2210E = X122765010document.getLoops("2210E");          //276      
+        X12SegmentNode[] SVC = l2210E[0].addSegment("SVC");
+        
+        String SVC011 = "";
+        String SVC012 = "";
+        String SVC013 = "";
+        if ((eoCSV.getField("ProcCodeQualifier") != null) && (eoCSV.getField("ProcCodeQualifier").length() > 0)) {
+        	SVC011 = eoCSV.getField("ProcCodeQualifier");
+        }	
+        if ((eoCSV.getField("ProcCodes") != null) && (eoCSV.getField("ProcCodes").length() > 0)) {
+        	SVC012 = eoCSV.getField("ProcCodes");
+        }	
+        if ((eoCSV.getField("ProcCodeModifier") != null) && (eoCSV.getField("ProcCodeModifier").length() > 0)) {
+        	SVC013 = eoCSV.getField("ProcCodeModifier");
+        }	
+        
+        SVC[0].setAnsiSubElement("01", "1", SVC011);
+        SVC[0].setAnsiSubElement("01", "2", SVC012);
+        SVC[0].setAnsiSubElement("01", "3", SVC013);
+        
+        if ((eoCSV.getField("LineItemChargeAmount") != null) && (eoCSV.getField("LineItemChargeAmount").length() > 0)) {
+        	SVC[0].setAnsiElement("02", eoCSV.getField("LineItemChargeAmount")); 
+        }	
+        if ((eoCSV.getField("ProcCodes") != null) && (eoCSV.getField("ProcCodes").length() > 0)) {
+        	SVC[0].setAnsiElement("04", eoCSV.getField("ProcCodes"));  
+        }	
+        if ((eoCSV.getField("ProcUnits") != null) && (eoCSV.getField("ProcUnits").length() > 0)) {
+        	SVC[0].setAnsiElement("07", eoCSV.getField("ProcUnits")); 
+        }	
+        
+
+        if ((eoCSV.getField("ServiceLineNumber") != null) && (eoCSV.getField("ServiceLineNumber").length() > 0)) {
+            X12SegmentNode[] REFFJ = l2210E[0].addSegment("REF");
+            REFFJ[0].setAnsiElement("01", "FJ");
+        	REFFJ[0].setAnsiElement("02", eoCSV.getField("ServiceLineNumber"));  // "Service Line Number"
+        }	
+        
+        if ((eoCSV.getField("ProcDates") != null) && (eoCSV.getField("ProcDates").length() > 0)) {
+            String procDate = "";
+        	holdDate=eoCSV.getField("ProcDates");
+        	if ((holdDate.length() == 8) && (pu.isNumeric(holdDate))) {
+        		procDate = pu.formatDates("", holdDate, "MMddyyyy", "yyyyMMdd");
+                X12SegmentNode[] SVCDTP = l2210E[0].addSegment("DTP");
+                SVCDTP[0].setAnsiElement("01", "472");
+                SVCDTP[0].setAnsiElement("02", "D8");
+                SVCDTP[0].setAnsiElement("03", procDate);  // "Procedure Date"
+        	}
+        	
+        }	
+		
+	} 
+	
+	private String getServiceDateRange() throws Exception {
+        
+        TreeSet claimDateSet = new TreeSet();         
+        String tempDateStr;
+        Date tempDate;        
+        
+        m_dateFormat_yyyMMdd = new SimpleDateFormat("yyyyMMdd");
+         
+        X12LoopNode[] l2400 = X128375010document.getLoops("2400", -1);
+        
+ 		for (X12LoopNode loop2400 : l2400) {
+ 		    String[] DTP472_03 = loop2400.getAnsiElement("DTP", "472", "03");
+            StringTokenizer st = new StringTokenizer(DTP472_03[0], "-");
+            while (st.hasMoreTokens()) {
+                tempDateStr = st.nextToken();
+                tempDate = m_dateFormat_yyyMMdd.parse(tempDateStr);
+                claimDateSet.add(tempDate);
+            }
+        }
+
+        if (claimDateSet.size() > 1) {
+            Date earliest = (Date) claimDateSet.first();
+            Date latest = (Date) claimDateSet.last();
+            return m_dateFormat_yyyMMdd.format(earliest) + "-" + m_dateFormat_yyyMMdd.format(latest);
+        }
+            else if (claimDateSet.size() == 1) {
+                Date claimDate = (Date) claimDateSet.first();
+                String dateStr = m_dateFormat_yyyMMdd.format(claimDate);
+                return dateStr + "-" + dateStr;
+            }
+            else {
+                return "";
+            }        
+    }
+    	
+	
+}
