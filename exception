@@ -1,5 +1,11 @@
 			throw new ApplicationException("An error occured during parsing, check that this is a valid claim file.", innerException);
 
+That means your current Domain.X12.Definitions assembly probably has:
+
+✅ a HS_005010X279_Definition (for 270/271)
+
+❌ but no HR_005010X212_Definition (for 276/277)
+
 
 
 using System;
