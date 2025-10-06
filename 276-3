@@ -139,7 +139,7 @@ namespace CSVRealtimeParser276
                                 var claimLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000C");
                                 if (claimLoop != null)
                                 {
-                                    // Add DMG
+                                    //  DMG
                                     if (!string.IsNullOrEmpty(GetCSVValue(record, "DOB")))
                                     {
                                         DMG dmg = new DMG();
@@ -162,7 +162,7 @@ namespace CSVRealtimeParser276
                                     {
                                         TraceTypeCode = "1",
                                         TraceNumber = GetCSVValue(record, "TraceNumber"),
-                                        ReferenceId = "CLAIMTRACE"
+                                       
                                     });
 
                                     // DTP (Service date)
@@ -194,7 +194,7 @@ namespace CSVRealtimeParser276
             }
 
             timer.Stop();
-            Console.WriteLine("✅ 276 X12 generation completed in " + timer.ElapsedMilliseconds + " ms");
+            Console.WriteLine("276 X12 generation completed in " + timer.ElapsedMilliseconds + " ms");
             Console.WriteLine("Output File: " + outFile);
         }
 
