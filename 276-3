@@ -30,34 +30,34 @@ namespace CSVRealtimeParser276
             timer.Start();
 
             // ---------- CONFIGURATION ----------
-            string csv276File = "C:\\Users\\YourUser\\CsvToX12\\276_input.csv";
+            string csv276File = "C:\\Users\\YourUser\\CsvToX12\\276.csv";
             string outputDir = "C:\\Users\\YourUser\\CsvToX12\\Output\\";
             Directory.CreateDirectory(outputDir);
 
-            // Default CSV header
             string defaultHeader =
                 "TxnType,ClaimNumber,MemberID,LN,FN,DOB,ProviderID,ProviderLN,ProviderFN,PayerID,PayerName,ClaimDateFrom,ClaimDateTo,TraceNumber";
 
             // ---------- 276 BASE TEMPLATE ----------
-            string base276Template =
-                "ISA*00*          *01*          *ZZ*          *ZZ*MEDIFAX EDI    *250924*1151*^*00501*605071653*0*P*:~" +
-                "GS*HR*AAAA*133052274*20250924*115129*1*X*005010X212~" +
+            // This acts like your 270 hardcoded string — a skeleton with placeholders
+            string claimStatusBase =
+                "ISA*00*          *00*          *ZZ*770545613      *ZZ*770545613      *990101*1200*^*00501*123456789*0*P*:~" +
+                "GS*HR*770545613*XXXXXXXXX*20990101*1200*12345*X*005010X212~" +
                 "ST*276*0001*005010X212~" +
-                "BHT*0010*13*605071653*20250924*115129~" +
+                "BHT*0010*13*12345*20290101*1200~" +
                 "HL*1**20*1~" +
-                "NM1*PR*2*XXXXX*****PI*XXXXX~" +
+                "NM1*PR*2*XXXXX*****PI*XXXXX~" +          // Payer
                 "HL*2*1*21*1~" +
-                "NM1*41*2*XXXXX*****46*XXXXXXX~" +
+                "NM1*41*2*XXXXX*****46*XXXXXXX~" +        // Provider
                 "HL*3*2*19*1~" +
-                "NM1*1P*2******XX*XXXXXXXXX~" +
+                "NM1*1P*2******XX*XXXXXXXXX~" +           // Service Provider
                 "HL*4*3*22*0~" +
                 "DMG*D8*19621105~" +
                 "NM1*IL*1*XXXXX*XXXXXX****MI*XXXXXXXX~" +
                 "TRN*1*XXXXXX*CLAIMTRACE~" +
                 "DTP*472*RD8*20250101-20250115~" +
                 "SE*14*0001~" +
-                "GE*1*1~" +
-                "IEA*1*605071653~";
+                "GE*1*12345~" +
+                "IEA*1*123456789~";
 
             // ---------- READ CSV ----------
             string jsonOutput = ParseCSVToJson(csv276File, defaultHeader);
@@ -70,7 +70,7 @@ namespace CSVRealtimeParser276
             {
                 foreach (JsonElement record in csvJson.RootElement.EnumerateArray())
                 {
-                    var x12Data = x12Parser.ParseString(base276Template);
+                    var x12Data = x12Parser.ParseString(claimStatusBase);
                     var interChanges = x12Data.Interchanges;
                     x12Message = new X12Message();
 
@@ -96,7 +96,7 @@ namespace CSVRealtimeParser276
                                 var stSegment = transactionset.Segments.OfType<ST>().FirstOrDefault();
                                 var bhtSegment = transactionset.Segments.OfType<BHT>().FirstOrDefault();
 
-                                // --- ISA/GS/GE/IEA updates ---
+                                // --- Update ISA / GS / GE / IEA ---
                                 isaSegment.InterchangeDate.ParsedValue = today_YYYYMMDD;
                                 isaSegment.InterchangeTime.ParsedValue = currentTime;
                                 isaSegment.InterchangeControlNumber = isaControlNumber;
@@ -111,7 +111,7 @@ namespace CSVRealtimeParser276
                                 bhtSegment.CreateDate.ParsedValue = today_YYYYMMDD;
                                 bhtSegment.CreateTime.ParsedValue = currentTimeSSS;
 
-                                // --- PAYER LOOP ---
+                                // --- PAYER LOOP (2000A/2100A) ---
                                 var payerLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000A");
                                 var payerNameLoop = payerLoop?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100A");
                                 var payerNM1 = payerNameLoop?.Segments.OfType<NM1>().FirstOrDefault();
@@ -122,7 +122,7 @@ namespace CSVRealtimeParser276
                                     payerNM1.IdCode = GetCSVValue(record, "PayerID");
                                 }
 
-                                // --- PROVIDER LOOP ---
+                                // --- PROVIDER LOOP (2000B/2100B) ---
                                 var providerLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000B");
                                 var providerNameLoop = providerLoop?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100B");
                                 var providerNM1 = providerNameLoop?.Segments.OfType<NM1>().FirstOrDefault();
@@ -134,11 +134,11 @@ namespace CSVRealtimeParser276
                                     providerNM1.IdCode = GetCSVValue(record, "ProviderID");
                                 }
 
-                                // --- PATIENT/CLAIM LOOP ---
+                                // --- CLAIM/PATIENT LOOP (2000C) ---
                                 var claimLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000C");
                                 if (claimLoop != null)
                                 {
-                                    // Add DMG (DOB)
+                                    // Add DMG
                                     if (!string.IsNullOrEmpty(GetCSVValue(record, "DOB")))
                                     {
                                         DMG dmg = new DMG();
@@ -147,7 +147,7 @@ namespace CSVRealtimeParser276
                                         claimLoop.AddSegment(dmg);
                                     }
 
-                                    // Patient NM1
+                                    // NM1 – patient/insured
                                     claimLoop.AddSegment(new NM1
                                     {
                                         Last = GetCSVValue(record, "LN"),
@@ -164,11 +164,11 @@ namespace CSVRealtimeParser276
                                         ReferenceId = "CLAIMTRACE"
                                     });
 
-                                    // DTP for Service Date
+                                    // DTP (Service date)
                                     if (!string.IsNullOrEmpty(GetCSVValue(record, "ClaimDateFrom")))
                                     {
                                         DTP dtp = new DTP();
-                                        dtp.Qualifier = "472"; // Service date
+                                        dtp.Qualifier = "472";
                                         dtp.Date.FormatQualifier = "RD8";
                                         dtp.Date.ParsedValue = ConvertDateRange(
                                             GetCSVValue(record, "ClaimDateFrom"),
@@ -177,7 +177,7 @@ namespace CSVRealtimeParser276
                                     }
                                 }
 
-                                // --- WRITE OUTPUT ---
+                                // --- WRITE FILE ---
                                 string x12String =
                                     isaSegment.ToString() +
                                     gsSegment.ToString() +
@@ -193,8 +193,8 @@ namespace CSVRealtimeParser276
             }
 
             timer.Stop();
-            Console.WriteLine($"Created 276 X12 successfully in {timer.ElapsedMilliseconds} ms");
-            Console.WriteLine($"Output File: {outFile}");
+            Console.WriteLine("✅ 276 X12 generation completed in " + timer.ElapsedMilliseconds + " ms");
+            Console.WriteLine("Output File: " + outFile);
         }
 
         // ---------- HELPERS ----------
