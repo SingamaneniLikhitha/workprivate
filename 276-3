@@ -29,8 +29,8 @@ namespace CSVRealtimeParser276
             timer.Start();
 
             // ---------- CONFIGURATION ----------
-            string csvFile = @"C:\Users\DELL\CsvToX12\276.csv"; // update your path
-            string outputDir = @"C:\Users\DELL\CsvToX12\Output\";
+            string csv276File = "C:\\Users\\slikhith\\CsvToX12\\Portal_87726_test_csi.csv";
+            string outputDir = "C:\\Users\\slikhith\\Documents\\creates-276.";
 
             // Default CSV header for 276 mapping
             string defaultHeader =
@@ -59,7 +59,7 @@ namespace CSVRealtimeParser276
                 "IEA*1*123456789~";
 
             // ---------- READ CSV ----------
-            string jsonOutput = ParseCSVToJson(csvFile, defaultHeader);
+            string jsonOutput = ParseCSVToJson(csv276File, defaultHeader);
             using JsonDocument csvJson = JsonDocument.Parse(jsonOutput);
 
             string currentTimeSSS_FileExt = DateTime.Now.ToString("HHmmssFFF");
@@ -173,15 +173,7 @@ namespace CSVRealtimeParser276
                                         });
                                     }
 
-                                    // AMT segment - Claim Amount
-                                    if (!string.IsNullOrEmpty(GetCSVValue(record, "ClaimAmount")))
-                                    {
-                                        claimLoop.AddSegment(new AMT
-                                        {
-                                            AmountQualifier = "T3",
-                                            Amount = GetCSVValue(record, "ClaimAmount")
-                                        });
-                                    }
+                                    
                                 }
 
                                 // ---------- WRITE X12 OUTPUT ----------
