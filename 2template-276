@@ -368,3 +368,11 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
         }
     }
 }
+
+
+`SafeJoin` just **concatenates two strings without blowing up on nulls**:
+
+* If **both** inputs are null/empty → returns `""`.
+* Otherwise → returns `(a ?? "") + (b ?? "")` (no separator).
+
+It’s used for things like `REF*BLT` to join **FacilityType** + **ClaimStatus** exactly like the Java code (e.g., `"13" + "1" → "131"`), while avoiding `"null1"` or `NullReferenceException`.
