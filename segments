@@ -70,3 +70,53 @@
         public string Country   = String.Empty;
         /// <summary>N407</summary>
         public string CountrySubdivision = String.Empty;
+  public class AMT : Segment
+    {
+        public AMT () { }
+        public AMT (string name) : base(name) { }
+
+        public string AmountQualifierCode = "";
+        public DecimalField MonetaryAmount = new DecimalField();
+
+        public override void Encode (X12StringEncoderStrategy encoder)
+        {
+            encoder.AppendField(SegmentId);
+            encoder.AppendField(AmountQualifierCode);
+            encoder.AppendField(MonetaryAmount);
+        }
+
+        public static AMT Parse (TokenizedSegment elements)
+        {
+            AMT amtSeg = new AMT();
+            amtSeg.AmountQualifierCode = elements[1];
+            amtSeg.MonetaryAmount.ParsedValue = elements[2];
+            return amtSeg;
+        }
+
+        public override void PopulateFieldValidationErrors (Queue<FieldValidationError> validationErrors)
+        {
+            if (AmountQualifierCode == "" || !MonetaryAmount.HasValidValue)
+                validationErrors.Enqueue(new FieldValidationError(this, "An Amount Qualifier Code and Monetary Amount are both required."));
+        }
+    }
+
+ public class NM1 : Segment
+    {
+        /// <summary>NM101</summary>
+        public string EntityId      = String.Empty;
+        /// <summary>NM102</summary>
+        public string EntityType    = String.Empty;
+        /// <summary>NM103</summary>
+        public string Last          = String.Empty;
+        /// <summary>NM104</summary>
+        public string First         = String.Empty;
+        /// <summary>NM105</summary>
+        public string Middle        = String.Empty;
+        /// <summary>NM106</summary>
+        public string Prefix        = String.Empty;
+        /// <summary>NM107</summary>
+        public string Suffix        = String.Empty;
+        /// <summary>NM108</summary>
+        public string IdQualifier   = String.Empty;
+        /// <summary>NM109</summary>
+        public string IdCode        = String.Empty;
