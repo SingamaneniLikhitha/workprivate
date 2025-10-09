@@ -4,8 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
 using Domain.X12;
 using Domain.X12.Fields;
 using Domain.X12.Loops;
@@ -27,41 +25,40 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
             GE geSegment;
             InterchangeControlLoop interchangeLoop;
 
-            Stopwatch timer = new Stopwatch();
+            var timer = new Stopwatch();
             timer.Start();
 
-            // ---------- CONFIGURATION ----------
+            // ---------- CONFIG ----------
             string csv276File = "C:\\Users\\slikhith\\CsvToX12\\Portal_87726_test_csi.csv";
-            string outputDir = "C:\\Users\\slikhith\\Documents\\creates-276.";
+            string outputDir  = "C:\\Users\\slikhith\\Documents\\creates-276.";
             Directory.CreateDirectory(outputDir);
 
             string defaultHeader =
-                "TxnType,ClaimNumber,MemberID,LN,FN,DOB,Gender,ProviderID,ProviderLN,ProviderFN,PayerID,PayerName,ClaimDateFrom,ClaimDateTo,TraceNumber,TotalSubmittedCharges,FacilityType,ClaimStatus,Group,ProcCodeQualifier,ProcCodes,ProcCodeModifier,LineItemChargeAmount,ProcUnits,ServiceLineNumber,ProcDates";
+                "TxnType,ClaimNumber,MemberID,LN,FN,DOB,Gender,ProviderID,ProviderLN,ProviderFN,PayerID,PayerName,ClaimDateFrom,ClaimDateTo,TraceNumber,TotalSubmittedCharges,FacilityType,ClaimStatus,Group,ProcCodeQualifier,ProcCodes,ProcCodeModifier,LineItemChargeAmount,ProcUnits,ServiceLineNumber,ProcDates,PAN,ServiceProvider1LN,ServiceProvider1FN,ServiceProvider1IDType,ServiceProvider1ID";
 
-            // ---------- 276 BASE TEMPLATE ----------
+            // ---------- BASE TEMPLATE (subscriber HL only) ----------
             string claimStatusBase =
-                "ISA*00*          *00*          *ZZ*770545613      *ZZ*00060          *060207*1056*^*00501*000000001*0*P*:~"
-                + "GS*HR*770545613*00060*20110401*105608*4056*X*005010X212~"
-                + "ST*276*0001*005010X212~"
-                + "BHT*0010*13**20110401~"
-                + "HL*1**20*1~"
-                + "NM1*PR*2******PI~"
-                + "HL*2*1*21*1~"
-                + "NM1*41*1******46~"
-                + "HL*3*2*19*1~"
-                + "NM1*1P*1******FI~"
-                + "HL*4*3*22*0~"
-                + "NM1*IL*1******24~"
-                + "SE*11*0001~"
-                + "GE*1*1~"
-                + "IEA*1*000000001~";
+                "ISA*00*          *00*          *ZZ*770545613      *ZZ*00060          *060207*1056*^*00501*000000001*0*P*:~" +
+                "GS*HR*770545613*00060*20110401*105608*4056*X*005010X212~" +
+                "ST*276*0001*005010X212~" +
+                "BHT*0010*13**20110401~" +
+                "HL*1**20*1~" +
+                "NM1*PR*2******PI~" +
+                "HL*2*1*21*1~" +
+                "NM1*41*1******46~" +
+                "HL*3*2*19*1~" +
+                "NM1*1P*1******FI~" +
+                "HL*4*3*22*0~" +      // Subscriber HL (no dependent)
+                "NM1*IL*1******24~" + // Stub subscriber NM1; we’ll fill
+                "SE*11*0001~" +
+                "GE*1*1~" +
+                "IEA*1*000000001~";
 
             // ---------- READ CSV ----------
             string jsonOutput = ParseCSVToJson(csv276File, defaultHeader);
             JArray csvJson = JArray.Parse(jsonOutput);
 
-            string currentTimeSSS_FileExt = DateTime.Now.ToString("HHmmssFFF");
-            string outFile = Path.Combine(outputDir, $"created-276_{currentTimeSSS_FileExt}.txt");
+            string outFile = Path.Combine(outputDir, $"created-276_{DateTime.Now:HHmmssFFF}.txt");
 
             foreach (JObject record in csvJson)
             {
@@ -69,14 +66,14 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                 var interChanges = x12Data.Interchanges;
                 x12Message = new X12Message();
 
-                // FIX: build all formats once
-                string isaDateYYMMDD = DateTime.Now.ToString("yyMMdd");   // ISA09 
-                string dateYYYYMMDD = DateTime.Now.ToString("yyyyMMdd"); // GS04, BHT04, DTP/DMG
-                string isaTimeHHmm = DateTime.Now.ToString("HHmm");     // ISA10 
-                string timeHHmmss = DateTime.Now.ToString("HHmmss");   // GS05, BHT05 
+                // Standardized date/time formats
+                string isaDateYYMMDD = DateTime.Now.ToString("yyMMdd");    // ISA09
+                string dateYYYYMMDD  = DateTime.Now.ToString("yyyyMMdd");  // GS04, BHT04, DMG, DTP
+                string isaTimeHHmm   = DateTime.Now.ToString("HHmm");      // ISA10
+                string timeHHmmss    = DateTime.Now.ToString("HHmmss");    // GS05, BHT05
 
                 string isaControlNumber = GetControlNumber();
-                string gsControlNumber = GetControlNumber();
+                string gsControlNumber  = GetControlNumber();
 
                 foreach (var interChange in interChanges)
                 {
@@ -91,217 +88,172 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
 
                         foreach (var transactionset in group.TransactionSets)
                         {
-                            var stSegment = transactionset.Segments.OfType<ST>().FirstOrDefault();
                             var bhtSegment = transactionset.Segments.OfType<BHT>().FirstOrDefault();
 
-                            // --- Update ISA / GS / GE / IEA ---
-                            // FIX: ISA date/time formats
-                            isaSegment.InterchangeDate.ParsedValue = isaDateYYMMDD; 
-                            isaSegment.InterchangeTime.ParsedValue = isaTimeHHmm;   
-                            isaSegment.InterchangeControlNumber = isaControlNumber;
-                            ieaSegment.InterchangeControlNumber = isaControlNumber;
+                            // --- ISA/GS/GE/IEA ---
+                            isaSegment.InterchangeDate.ParsedValue      = isaDateYYMMDD;
+                            isaSegment.InterchangeTime.ParsedValue      = isaTimeHHmm;
+                            isaSegment.InterchangeControlNumber         = isaControlNumber;
+                            ieaSegment.InterchangeControlNumber         = isaControlNumber;
 
-                            // FIX: GS dates/times
-                            gsSegment.CreateDate.ParsedValue = dateYYYYMMDD;  
-                            gsSegment.CreateTime.ParsedValue = timeHHmmss;    
-                            gsSegment.GroupControlNumber = int.Parse(gsControlNumber);
-                            geSegment.GroupControlNumber = int.Parse(gsControlNumber);
+                            gsSegment.CreateDate.ParsedValue            = dateYYYYMMDD;
+                            gsSegment.CreateTime.ParsedValue            = timeHHmmss;
+                            gsSegment.GroupControlNumber                = int.Parse(gsControlNumber);
+                            geSegment.GroupControlNumber                = int.Parse(gsControlNumber);
 
-                            // FIX: BHT date/time formats
                             if (bhtSegment != null)
                             {
-                                var PAN = GetCSVValue(record, "PAN");
-                                if( PAN != null && PAN.Length > 0)
-                                {
-                                    bhtSegment.OriginatorIdentifier = PAN;
-                                   
-
-                                }
-                                else
-                                {
-                                    bhtSegment.OriginatorIdentifier = isaControlNumber;
-
-                                }
-                                    
-                                bhtSegment.CreateDate.ParsedValue = dateYYYYMMDD; 
-                                bhtSegment.CreateTime.ParsedValue = timeHHmmss;   
+                                // If PAN provided, use as OriginatorIdentifier like your earlier request
+                                var panForBht = GetCSVValue(record, "PAN");
+                                bhtSegment.OriginatorIdentifier = string.IsNullOrEmpty(panForBht) ? isaControlNumber : panForBht;
+                                bhtSegment.CreateDate.ParsedValue = dateYYYYMMDD;
+                                bhtSegment.CreateTime.ParsedValue = timeHHmmss;
                             }
 
-                            // --- PAYER LOOP (2000A/2100A) ---
-                            var payerLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000A");
-                            var payerNameLoop = payerLoop?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100A");
-                            var payerNM1 = payerNameLoop?.Segments.OfType<NM1>().FirstOrDefault();
+                            // --- 2000A/2100A: Payer ---
+                            var loop2000A   = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000A");
+                            var loop2100A   = loop2000A?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100A");
+                            var payerNM1    = loop2100A?.Segments.OfType<NM1>().FirstOrDefault();
                             if (payerNM1 != null)
                             {
-                                payerNM1.Last = GetCSVValue(record, "PayerName");
+                                payerNM1.EntityId    = "PR";
+                                payerNM1.EntityType  = "2";
+                                payerNM1.Last        = GetCSVValue(record, "PayerName");  // REQUIRED NM103
                                 payerNM1.IdQualifier = "PI";
-                                payerNM1.IdCode = GetCSVValue(record, "PayerID"); 
+                                payerNM1.IdCode      = GetCSVValue(record, "PayerID");
                             }
 
-                            // --- INFORMATION RECEIVER (2000B/2100B) ---
-                            var infoRecvLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000B");
-                            var infoNameLoop = infoRecvLoop?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100B");
-                            var infoNM1 = infoNameLoop?.Segments.OfType<NM1>().FirstOrDefault();
+                            // --- 2000B/2100B: Information Receiver ---
+                            var loop2000B   = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000B");
+                            var loop2100B   = loop2000B?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100B");
+                            var infoNM1     = loop2100B?.Segments.OfType<NM1>().FirstOrDefault();
                             if (infoNM1 != null)
                             {
-                                if (GetCSVValue(record, "ProviderLN") != null) { infoNM1.Last = GetCSVValue(record, "ProviderLN"); }
-                                var providerFN = GetCSVValue(record, "ProviderFN");
-                                if (providerFN != null)
-                                {
-                                    infoNM1.First = GetCSVValue(record, "ProviderFN");
-                                }
-                                else {
-                                    infoNM1.EntityType = "2";
-                                }                               
-                                                                 
-                                infoNM1.IdQualifier = "46"; 
-                                infoNM1.IdCode = GetCSVValue(record, "ProviderID");
+                                var provLN = GetCSVValue(record, "ProviderLN");
+                                var provFN = GetCSVValue(record, "ProviderFN");
+
+                                infoNM1.EntityId    = "41";
+                                infoNM1.EntityType  = string.IsNullOrEmpty(provFN) ? "2" : "1"; // org if no FN
+                                infoNM1.Last        = provLN;
+                                infoNM1.First       = provFN;
+                                infoNM1.IdQualifier = "46";
+                                infoNM1.IdCode      = GetCSVValue(record, "ProviderID");
                             }
-                            //(2000C / 2100C)
+
+                            // --- 2000C/2100C: Service Provider (optional – kept as in your code) ---
                             var loop2000c = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000C");
                             var loop2100c = loop2000c?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100C");
-                            var NM12100c = loop2100c?.Segments.OfType<NM1>().FirstOrDefault();
+                            var NM12100c  = loop2100c?.Segments.OfType<NM1>().FirstOrDefault();
                             if (NM12100c != null)
                             {
-                                if (GetCSVValue(record, "ServiceProvider1LN") != null) { NM12100c.Last = GetCSVValue(record, "ServiceProvider1LN"); }
-                                
-                                if (GetCSVValue(record, "ServiceProvider1FN") != null) { NM12100c.First = GetCSVValue(record, "ServiceProvider1FN"); }
-                                NM12100c.IdQualifier = "XX";
+                                NM12100c.Last = GetCSVValue(record, "ServiceProvider1LN");
+                                NM12100c.First = GetCSVValue(record, "ServiceProvider1FN");
+
                                 var provIDType = GetCSVValue(record, "ServiceProvider1IDType");
-                                var provID = GetCSVValue(record, "ServiceProvider1ID");
-
-                                if ( (provID != null) && (provIDType != null))
+                                var provID     = GetCSVValue(record, "ServiceProvider1ID");
+                                NM12100c.IdQualifier = "XX"; // default
+                                if (!string.IsNullOrEmpty(provIDType) && !string.IsNullOrEmpty(provID))
                                 {
-                                    if(provIDType == "T")
-                                    {
-                                        NM12100c.IdQualifier = "FI";
-
-                                    }
-                                    if (provIDType == "P")
-                                    {
-                                        NM12100c.IdQualifier = "SV";
-
-                                    }
+                                    if (provIDType == "T") NM12100c.IdQualifier = "FI";
+                                    if (provIDType == "P") NM12100c.IdQualifier = "SV";
                                     NM12100c.IdCode = provID;
                                 }
-
-
                             }
 
+                            // --- 2000D (Subscriber HL) ---
+                            var loop2000D = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000D")
+                                         ?? transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000C"); // fallback
 
-                            // --- SUBSCRIBER BRANCH under HL4 (2000D) ---
-                            var subscriberLoop = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000D")
-                                                 ?? transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000C");
-                            if (subscriberLoop != null)
+                            // --- 2100D (Subscriber Name loop) ---
+                            var loop2100D = loop2000D?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100D");
+                            var subNM1    = loop2100D?.Segments.OfType<NM1>().FirstOrDefault(); // template stub NM1*IL is here
+
+                            if (subNM1 != null)
                             {
-                                var subscriberNM1loop = subscriberLoop?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100D");
+                                subNM1.EntityId    = "IL";
+                                subNM1.EntityType  = "1"; // person
+                                subNM1.Last        = GetCSVValue(record, "LN");
+                                subNM1.First       = GetCSVValue(record, "FN");
+                                subNM1.IdQualifier = "MI";
+                                subNM1.IdCode      = GetCSVValue(record, "MemberID");
+                            }
 
-                                // DMG (DOB/Gender) 
-                                var dobYYYYMMDD = NormalizeToYYYYMMDD(GetCSVValue(record, "DOB"));
-                                if (!string.IsNullOrEmpty(dobYYYYMMDD))
+                            // DMG must be inside 2100D and AFTER NM1
+                            var dobYYYYMMDD = NormalizeToYYYYMMDD(GetCSVValue(record, "DOB"));
+                            if (!string.IsNullOrEmpty(dobYYYYMMDD) && loop2100D != null)
+                            {
+                                var dmg = new DMG
                                 {
-                                    var dmg = new DMG();
-                                    dmg.DateOfBirth.FormatQualifier = "D8";
-                                    dmg.DateOfBirth.ParsedValue = dobYYYYMMDD; 
-                                    var gender = GetCSVValue(record, "Gender");
-                                    if (!string.IsNullOrEmpty(gender)) dmg.GenderCode = gender;
-                                    subscriberLoop.AddSegment(dmg);
-                                }
+                                    DateOfBirth =
+                                    {
+                                        FormatQualifier = "D8",
+                                        ParsedValue     = dobYYYYMMDD
+                                    },
+                                    GenderCode = GetCSVValue(record, "Gender")
+                                };
+                                loop2100D.AddSegment(dmg);
+                            }
 
-                                // NM1 – Subscriber identity
-                                //var subscriberNM1 = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000D");
-                                var sNM1 = subscriberNM1loop.Segments.OfType<NM1>().FirstOrDefault();
+                            // --- 2200D (Claim Status Tracking) ---
+                            // Domain.X12 templates often include 2200D; if not, create a weak loop so we can add segments there
+                            var loop2200D = loop2000D?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2200D");
+                            if (loop2200D == null && loop2000D != null)
+                            {
+                                var weak2200D = new WeakTypeLoop("2200D", "Subscriber Claim Tracking");
+                                loop2000D.AddSegment(weak2200D);
+                                loop2200D = weak2200D;
+                            }
 
-                                if (sNM1 != null)
-                                {
+                            if (loop2200D != null)
+                            {
+                                // TRN – as per your expected, leave TRN02 blank
+                                var trn = new TRN { TraceTypeCode = "1", TraceNumber = "" };
+                                loop2200D.AddSegment(trn);
 
-                                    sNM1.Last = GetCSVValue(record, "LN");
-                                    sNM1.First = GetCSVValue(record, "FN");
-                                    sNM1.IdQualifier = "MI";
-                                    sNM1.IdCode = GetCSVValue(record, "MemberID");
-                                }
+                                // REF segments
+                                var pan = GetCSVValue(record, "PAN");
+                                if (!string.IsNullOrEmpty(pan))
+                                    AddRefSegment(loop2200D, "EJ", pan);
 
-                                //var loop2200D = subscriberNM1loop?.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2200D");
+                                AddRefSegment(loop2200D, "1K", GetCSVValue(record, "ClaimNumber"));
 
-                                // TRN – must include trace number value
-                                var trace = GetCSVValue(record, "PAN");
-                                if (!string.IsNullOrEmpty(trace))
-                                {
-                                    var trn = new TRN();
-                                    trn.TraceTypeCode = "1";
-                                    trn.TraceNumber = trace;
-                                    subscriberLoop.AddSegment(trn);
-                                    
-                                }
+                                var ft = GetCSVValue(record, "FacilityType");
+                                var cs = GetCSVValue(record, "ClaimStatus");
+                                if (!string.IsNullOrEmpty(ft) && !string.IsNullOrEmpty(cs))
+                                    AddRefSegment(loop2200D, "BLT", ft + cs);
+                                AddRefSegment(loop2200D, "LU", ft);
+                                AddRefSegment(loop2200D, "6P", GetCSVValue(record, "Group"));
 
-                                // AMT*T3
+                                // AMT*T3 (with amount)
                                 var amtVal = GetCSVValue(record, "TotalSubmittedCharges");
                                 if (!string.IsNullOrEmpty(amtVal))
                                 {
-                                    var amt = new AMT();
-                                    amt.AmountQualifierCode = "T3";        
-                                    amt.MonetaryAmount.ParsedValue = amtVal;       
-                                    subscriberLoop.AddSegment(amt);
+                                    var amt = new AMT
+                                    {
+                                        AmountQualifierCode = "T3"
+                                    };
+                                    amt.MonetaryAmount.ParsedValue = amtVal;
+                                    loop2200D.AddSegment(amt);
                                 }
 
-                                // Claim Service Date DTP (RD8)
+                                // DTP 472 (Claim Service Date) — REQUIRED if 2210D not used
                                 var from = NormalizeToYYYYMMDD(GetCSVValue(record, "ClaimDateFrom"));
-                                var to = NormalizeToYYYYMMDD(GetCSVValue(record, "ClaimDateTo"));
+                                var to   = NormalizeToYYYYMMDD(GetCSVValue(record, "ClaimDateTo"));
                                 if (!string.IsNullOrEmpty(from))
                                 {
                                     var dtp = new DTP { Qualifier = "472" };
                                     if (!string.IsNullOrEmpty(to))
                                     {
                                         dtp.Date.FormatQualifier = "RD8";
-                                        dtp.Date.ParsedValue = $"{from}-{to}";
+                                        dtp.Date.ParsedValue     = $"{from}-{to}";
                                     }
                                     else
                                     {
                                         dtp.Date.FormatQualifier = "D8";
-                                        dtp.Date.ParsedValue = from;
+                                        dtp.Date.ParsedValue     = from;
                                     }
-                                    subscriberLoop.AddSegment(dtp);
+                                    loop2200D.AddSegment(dtp);
                                 }
-
-                                // SVC (service line) 
-                                if (!string.IsNullOrEmpty(GetCSVValue(record, "ProcCodes")))
-                                {
-                                    var svc = new SVC
-                                    {
-                                        Procedure = new ProcedureIdentifier
-                                        {
-                                            Qualifier = GetCSVValue(record, "ProcCodeQualifier"),
-                                            Code = GetCSVValue(record, "ProcCodes"),
-                                        }
-                                    };
-                                    var lineAmt = GetCSVValue(record, "LineItemChargeAmount");
-                                    if (!string.IsNullOrEmpty(lineAmt)) svc.ChargeAmount.ParsedValue = lineAmt;
-                                    var units = GetCSVValue(record, "ProcUnits");
-                                    if (!string.IsNullOrEmpty(units)) svc.UnitsOfServicePaidCount.ParsedValue = units;
-                                    subscriberLoop.AddSegment(svc);
-                                }
-
-                                // REF*FJ
-                                AddRefSegment(subscriberLoop, "FJ", GetCSVValue(record, "ServiceLineNumber"));
-
-                                var procDate = NormalizeToYYYYMMDD(GetCSVValue(record, "ProcDates"));
-                                if (!string.IsNullOrEmpty(procDate))
-                                {
-                                    var procDtp = new DTP { Qualifier = "472" };
-                                    procDtp.Date.FormatQualifier = "D8";
-                                    procDtp.Date.ParsedValue = procDate; 
-                                    subscriberLoop.AddSegment(procDtp);
-                                }
-
-                                // Other REF 
-                                AddRefSegment(subscriberLoop, "1K", GetCSVValue(record, "ClaimNumber"));
-                                var ft = GetCSVValue(record, "FacilityType");
-                                var cs = GetCSVValue(record, "ClaimStatus");
-                                if (!string.IsNullOrEmpty(ft) && !string.IsNullOrEmpty(cs))
-                                    AddRefSegment(subscriberLoop, "BLT", ft + cs);
-                                AddRefSegment(subscriberLoop, "LU", ft);
-                                AddRefSegment(subscriberLoop, "6P", GetCSVValue(record, "Group"));
-                                AddRefSegment(subscriberLoop, "EJ", trace);
                             }
 
                             // --- WRITE FILE ---
@@ -328,66 +280,39 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
         {
             if (!string.IsNullOrEmpty(value))
             {
-                REF refSeg = new REF { IdQualifier = qualifier, IdCode = value };
+                var refSeg = new REF { IdQualifier = qualifier, IdCode = value };
                 loop.AddSegment(refSeg);
             }
         }
 
-        //private static string GetCSVValue(JObject json, string field) => json[field]?.ToString() ?? "";
-
-        private static string GetCSVValue(JObject jsonElement, string node)
-        {
-            string x12ElementValue = "";
-
-            if (!string.IsNullOrEmpty(node))
-            {
-                try
-                {
-                    x12ElementValue = jsonElement[node]?.ToString() ?? string.Empty;
-                }
-                catch (KeyNotFoundException knfe)
-                {
-                    //log it
-                }
-            }
-            return x12ElementValue;
-        }
+        private static string GetCSVValue(JObject json, string field) => json[field]?.ToString() ?? "";
 
         private static string NormalizeToYYYYMMDD(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw)) return "";
-            var s = new string(raw.Where(char.IsDigit).ToArray()); 
+            // Remove non-digits
+            var digits = new string(raw.Where(char.IsDigit).ToArray());
             DateTime dt;
 
-            var formats = new[] { "yyyyMMdd", "MMddyyyy", "Mddyyyy", "Mdyyyy", "M/d/yyyy", "MM/dd/yyyy", "M/d/yy", "MM/dd/yy", "yyyy-MM-dd" };
+            // Try common explicit formats (with and without separators)
+            var formats = new[] { "yyyyMMdd", "MMddyyyy", "M/d/yyyy", "MM/dd/yyyy", "yyyy-MM-dd" };
             foreach (var fmt in formats)
             {
                 if (DateTime.TryParseExact(raw, fmt, null, System.Globalization.DateTimeStyles.None, out dt))
                     return dt.ToString("yyyyMMdd");
             }
 
-            if (s.Length == 8)
+            // Try pure digits
+            if (digits.Length == 8)
             {
-                if (DateTime.TryParseExact(s, "MMddyyyy", null, System.Globalization.DateTimeStyles.None, out dt))
+                if (DateTime.TryParseExact(digits, "MMddyyyy", null, System.Globalization.DateTimeStyles.None, out dt))
                     return dt.ToString("yyyyMMdd");
-                if (DateTime.TryParseExact(s, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out dt))
+                if (DateTime.TryParseExact(digits, "yyyyMMdd", null, System.Globalization.DateTimeStyles.None, out dt))
                     return dt.ToString("yyyyMMdd");
             }
 
-            // Last resort, let DateTime parse
-            if (DateTime.TryParse(raw, out dt))
-                return dt.ToString("yyyyMMdd");
-
-            return "";
-        }
-
-        private static string ConvertDateRange(string from, string to)
-        {
-            var f = NormalizeToYYYYMMDD(from);
-            var t = NormalizeToYYYYMMDD(to);
-            if (!string.IsNullOrEmpty(f) && !string.IsNullOrEmpty(t)) return $"{f}-{t}";
-            if (!string.IsNullOrEmpty(f)) return f;
-            return "";
+            // Last resort
+            return DateTime.TryParse(raw, out dt) ? dt.ToString("yyyyMMdd") : "";
         }
 
         private static string GetControlNumber()
@@ -406,12 +331,12 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
 
             if (lines[0].IndexOf("TxnType", StringComparison.OrdinalIgnoreCase) != -1)
             {
-                headers = lines[0].Split(',');
+                headers   = lines[0].Split(',');
                 startLine = 1;
             }
             else
             {
-                headers = defaultHeader.Split(',');
+                headers   = defaultHeader.Split(',');
                 startLine = 0;
             }
 
