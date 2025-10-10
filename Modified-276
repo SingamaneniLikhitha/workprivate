@@ -32,7 +32,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
 
             // ---------- CONFIGURATION ----------
             string csv276File = "C:\\Users\\slikhith\\CsvToX12\\Portal_87726_test_csi.csv";
-            string outputDir = "C:\\Users\\slikhith\\Documents\\creates-276.";
+            string outputDir = "C:\\Users\\slikhith\\Documents\\new-276.";
             Directory.CreateDirectory(outputDir);
 
             string defaultHeader =
@@ -51,6 +51,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                 + "HL*3*2*19*1~"
                 + "NM1*1P*1******FI~"
                 + "HL*4*3*22*0~"
+                + "DMG*D8*19430501*F~"
                 + "NM1*IL*1******24~"
                 + "SE*11*0001~"
                 + "GE*1*1~"
@@ -61,7 +62,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
             JArray csvJson = JArray.Parse(jsonOutput);
 
             string currentTimeSSS_FileExt = DateTime.Now.ToString("HHmmssFFF");
-            string outFile = Path.Combine(outputDir, $"created-276_{currentTimeSSS_FileExt}.txt");
+            string outFile = Path.Combine(outputDir, $"new-276_{currentTimeSSS_FileExt}.txt");
 
             foreach (JObject record in csvJson)
             {
@@ -193,7 +194,8 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                             var loop2000D = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000D");
                             if (loop2000D != null)
                             {
-                                // 1️⃣ DMG segment (DOB/Gender) – appears right after HL
+                                // 1 DMG segment (DOB/Gender) – appears right after HL
+                                
                                 var dobYYYYMMDD = NormalizeToYYYYMMDD(GetCSVValue(record, "DOB"));
                                 if (!string.IsNullOrEmpty(dobYYYYMMDD))
                                 {
@@ -202,9 +204,12 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                                     dmg.DateOfBirth.ParsedValue = dobYYYYMMDD;
                                     dmg.GenderCode = GetCSVValue(record, "Gender");
                                     loop2000D.AddSegment(dmg);
+                                    
+                                    
+
                                 }
 
-                                // 2️⃣ Subscriber NM1 inside 2100D
+                                //  Subscriber NM1 inside 2100D
                                 var loop2100D = loop2000D.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100D");
                                 if (loop2100D != null)
                                 {
@@ -221,24 +226,23 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                                     }
                                 }
 
-                                // 3️⃣ Claim Status Loop (2200D)
+                                //  Claim Status Loop (2200D)
                                 var loop2200D = loop2000D.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2200D");
                                 if (loop2200D == null)
-                                    loop2200D = loop2000D; // fallback for libraries that don't expose subloop creation
+                                    loop2200D = loop2000D;
 
                                 // TRN – Claim Status Tracking Number
-                                var trace = GetCSVValue(record, "TraceNumber");
-                                if (string.IsNullOrWhiteSpace(trace))
-                                    trace = "TRACE" + DateTime.Now.ToString("HHmmssfff"); // fallback
-
-                                var trn = new TRN
+                                var trace = GetCSVValue(record, "PAN");
+                                if (!string.IsNullOrEmpty(trace))
                                 {
-                                    TraceTypeCode = "1",
-                                    TraceNumber = trace
-                                };
-                                loop2200D.AddSegment(trn);
+                                    var trn = new TRN();
+                                    trn.TraceTypeCode = "1";
+                                    trn.TraceNumber = trace;
+                                    loop2200D.AddSegment(trn);
 
-                                // 4REF segments (come *after* TRN, before AMT)
+                                }
+
+                                // REF segments (come *after* TRN, before AMT)
                                 var ft = GetCSVValue(record, "FacilityType");
                                 var cs = GetCSVValue(record, "ClaimStatus");
                                 var refgrp = GetCSVValue(record, "Group");
@@ -272,26 +276,68 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                                 //  DTP*472 (Claim Service Dates)
                                 var startDate = NormalizeToYYYYMMDD(GetCSVValue(record, "StartDate"));
                                 var endDate = NormalizeToYYYYMMDD(GetCSVValue(record, "EndDate"));
+                                var procDate = NormalizeToYYYYMMDD(GetCSVValue(record, "ProcDates"));
+                                var hasProcDates = !string.IsNullOrEmpty(procDate);
 
-                                if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+                                if (!hasProcDates)
                                 {
-                                    var dtp = new DTP
+
+                                    if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
                                     {
-                                        Qualifier = "472"
-                                    };
-                                    dtp.Date.FormatQualifier = "RD8";
-                                    dtp.Date.ParsedValue = $"{startDate}-{endDate}";
-                                    loop2200D.AddSegment(dtp);
+                                        var dtp = new DTP
+                                        {
+                                            Qualifier = "472"
+                                        };
+                                        dtp.Date.FormatQualifier = "RD8";
+                                        dtp.Date.ParsedValue = $"{startDate}-{endDate}";
+                                        loop2200D.AddSegment(dtp);
+                                    }
+                                    else if (!string.IsNullOrEmpty(startDate))
+                                    {
+                                        var dtp = new DTP
+                                        {
+                                            Qualifier = "472"
+                                        };
+                                        dtp.Date.FormatQualifier = "D8";
+                                        dtp.Date.ParsedValue = startDate;
+                                        loop2200D.AddSegment(dtp);
+                                    }
                                 }
-                                else if (!string.IsNullOrEmpty(startDate))
+                                if (hasProcDates)
                                 {
-                                    var dtp = new DTP
+                                    var loop2210D = loop2000D.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2210D");
+                                    if (loop2210D == null)
+                                        loop2210D = loop2200D;
+                                    var svc = new SVC();
+                                    svc.Procedure = new ProcedureIdentifier
                                     {
-                                        Qualifier = "472"
+                                        Qualifier = GetCSVValue(record, "ProcCodeQualifier"),
+                                        Code = GetCSVValue(record, "ProcCodes"),
+                                        Modifier1 = GetCSVValue(record, "ProCodeModifier")
+
                                     };
-                                    dtp.Date.FormatQualifier = "D8";
-                                    dtp.Date.ParsedValue = startDate;
-                                    loop2200D.AddSegment(dtp);
+                                    var lineCharge = GetCSVValue(record, "LineItemChargeAmount");
+                                    if (!string.IsNullOrEmpty(lineCharge))
+                                        svc.ChargeAmount.ParsedValue = lineCharge;
+
+                                    //var codes = GetCSVValue(record, "ProcCodes");
+                                    //if (!string.IsNullOrEmpty(codes))
+                                    //    svc.RevenueCode = codes;
+
+                                    var units = GetCSVValue(record, "ProcUnits");
+                                    if (!string.IsNullOrEmpty(units))
+                                        svc.OriginalUnitsOfServiceCount.ParsedValue = units;
+
+                                    loop2210D.AddSegment(svc);
+
+                                    var svcLineNo = GetCSVValue(record, "ServiceLineNumber");
+                                    if (!string.IsNullOrEmpty(svcLineNo))
+                                        AddRefSegment(loop2210D, "FJ", svcLineNo);
+                                    var  procDtp = new DTP { Qualifier = "472" };
+                                    procDtp.Date.FormatQualifier = "D8";
+                                    procDtp.Date.ParsedValue = procDate;
+                                    loop2210D.AddSegment(procDtp);
+
                                 }
                             }
 
