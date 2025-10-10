@@ -51,7 +51,6 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                 + "HL*3*2*19*1~"
                 + "NM1*1P*1******FI~"
                 + "HL*4*3*22*0~"
-                + "DMG*D8*19430501*F~"
                 + "NM1*IL*1******24~"
                 + "SE*11*0001~"
                 + "GE*1*1~"
@@ -203,7 +202,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                                     dmg.DateOfBirth.FormatQualifier = "D8";
                                     dmg.DateOfBirth.ParsedValue = dobYYYYMMDD;
                                     dmg.GenderCode = GetCSVValue(record, "Gender");
-                                    loop2000D.AddSegment(dmg);
+                                    loop2000D.AddSegment(1, dmg);
                                     
                                     
 
