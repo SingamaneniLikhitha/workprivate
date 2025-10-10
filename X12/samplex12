@@ -43,12 +43,7 @@ IEA*1*605088663~
 var loop2000D = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000D");
 if (loop2000D != null)
 {
-    // 1️⃣ Keep only HL temporarily so DMG appears immediately after it
-    var children = loop2000D.Segments.Where(s => s.SegmentId != "HL").ToList();
-    foreach (var c in children)
-        loop2000D.Segments.Remove(c);
-
-    // 2️⃣ DMG segment (DOB/Gender)
+    // 1️⃣ DMG segment (DOB/Gender) – appears right after HL
     var dobYYYYMMDD = NormalizeToYYYYMMDD(GetCSVValue(record, "DOB"));
     if (!string.IsNullOrEmpty(dobYYYYMMDD))
     {
@@ -56,29 +51,10 @@ if (loop2000D != null)
         dmg.DateOfBirth.FormatQualifier = "D8";
         dmg.DateOfBirth.ParsedValue = dobYYYYMMDD;
         dmg.GenderCode = GetCSVValue(record, "Gender");
-        loop2000D.AddSegment(dmg); // ✅ DMG right after HL
+        loop2000D.AddSegment(dmg);
     }
 
-    // 3️⃣ REF segments under 2000D
-    var ft = GetCSVValue(record, "FacilityType");
-    var cs = GetCSVValue(record, "ClaimStatus");
-    var group = GetCSVValue(record, "Group");
-    var claimNumber = GetCSVValue(record, "ClaimNumber");
-
-    if (!string.IsNullOrEmpty(ft) && !string.IsNullOrEmpty(cs))
-        AddRefSegment(loop2000D, "BLT", ft + cs);
-    if (!string.IsNullOrEmpty(ft))
-        AddRefSegment(loop2000D, "LU", ft);
-    if (!string.IsNullOrEmpty(group))
-        AddRefSegment(loop2000D, "6P", group);
-    if (!string.IsNullOrEmpty(claimNumber))
-        AddRefSegment(loop2000D, "1K", claimNumber);
-
-    // 4️⃣ Reattach existing subloops (2100D, 2200D, etc.)
-    foreach (var c in children)
-        loop2000D.AddSegment(c);
-
-    // 5️⃣ Subscriber name inside 2100D
+    // 2️⃣ Subscriber NM1 inside 2100D
     var loop2100D = loop2000D.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2100D");
     if (loop2100D != null)
     {
@@ -95,25 +71,46 @@ if (loop2000D != null)
         }
     }
 
-    // 6️⃣ Ensure 2200D loop exists — correct way!
+    // 3️⃣ Claim Status Loop (2200D)
     var loop2200D = loop2000D.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2200D");
     if (loop2200D == null)
-        loop2200D = loop2000D.AddLoop("2200D"); // ✅ proper Domain.X12 pattern
+        loop2200D = loop2000D; // fallback for libraries that don't expose subloop creation
 
-    // 7️⃣ TRN (Claim Status Tracking Number)
+    // TRN – Claim Status Tracking Number
     var trace = GetCSVValue(record, "TraceNumber");
     if (string.IsNullOrWhiteSpace(trace))
         trace = "TRACE" + DateTime.Now.ToString("HHmmssfff"); // fallback
 
-    var trn = new TRN { TraceTypeCode = "1", TraceNumber = trace };
+    var trn = new TRN
+    {
+        TraceTypeCode = "1",
+        TraceNumber = trace
+    };
     loop2200D.AddSegment(trn);
 
-    // 8️⃣ REF*EJ (Payer Claim Control Number)
+    // 4️⃣ REF segments (come *after* TRN, before AMT)
+    var ft = GetCSVValue(record, "FacilityType");
+    var cs = GetCSVValue(record, "ClaimStatus");
+    var group = GetCSVValue(record, "Group");
+    var claimNumber = GetCSVValue(record, "ClaimNumber");
     var pan = GetCSVValue(record, "PAN");
-    if (!string.IsNullOrEmpty(pan))
-        AddRefSegment(loop2200D, "EJ", pan);
 
-    // 9️⃣ AMT*T3 (Total Submitted Charges)
+    if (!string.IsNullOrEmpty(pan))
+        AddRefSegment(loop2200D, "EJ", pan);         // Payer Claim Control Number
+
+    if (!string.IsNullOrEmpty(ft) && !string.IsNullOrEmpty(cs))
+        AddRefSegment(loop2200D, "BLT", ft + cs);   // Bill Type
+
+    if (!string.IsNullOrEmpty(ft))
+        AddRefSegment(loop2200D, "LU", ft);         // Facility Type
+
+    if (!string.IsNullOrEmpty(group))
+        AddRefSegment(loop2200D, "6P", group);      // Group Number
+
+    if (!string.IsNullOrEmpty(claimNumber))
+        AddRefSegment(loop2200D, "1K", claimNumber); // Claim Control Number
+
+    // 5️⃣ AMT*T3 (Total Submitted Charges)
     var amtVal = GetCSVValue(record, "TotalSubmittedCharges");
     if (!string.IsNullOrEmpty(amtVal))
     {
@@ -122,7 +119,7 @@ if (loop2000D != null)
         loop2200D.AddSegment(amt);
     }
 
-    // 🔟 DTP*472 (Claim Service Dates)
+    // 6️⃣ DTP*472 (Claim Service Dates)
     var from = NormalizeToYYYYMMDD(GetCSVValue(record, "ClaimDateFrom"));
     var to = NormalizeToYYYYMMDD(GetCSVValue(record, "ClaimDateTo"));
     if (!string.IsNullOrEmpty(from))
