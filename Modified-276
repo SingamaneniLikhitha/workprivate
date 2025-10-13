@@ -95,19 +95,19 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                             var bhtSegment = transactionset.Segments.OfType<BHT>().FirstOrDefault();
 
                             // --- Update ISA / GS / GE / IEA ---
-                            // FIX: ISA date/time formats
+                            
                             isaSegment.InterchangeDate.ParsedValue = isaDateYYMMDD; 
                             isaSegment.InterchangeTime.ParsedValue = isaTimeHHmm;   
                             isaSegment.InterchangeControlNumber = isaControlNumber;
                             ieaSegment.InterchangeControlNumber = isaControlNumber;
 
-                            // FIX: GS dates/times
+                            
                             gsSegment.CreateDate.ParsedValue = dateYYYYMMDD;  
                             gsSegment.CreateTime.ParsedValue = timeHHmmss;    
                             gsSegment.GroupControlNumber = int.Parse(gsControlNumber);
                             geSegment.GroupControlNumber = int.Parse(gsControlNumber);
 
-                            // FIX: BHT date/time formats
+                         
                             if (bhtSegment != null)
                             {
                                 var PAN = GetCSVValue(record, "PAN");
@@ -193,7 +193,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                             var loop2000D = transactionset.Segments.OfType<Loop>().FirstOrDefault(l => l.SegmentId == "2000D");
                             if (loop2000D != null)
                             {
-                                // 1 DMG segment (DOB/Gender) – appears right after HL
+                                // DMG segment (DOB/Gender)
                                 
                                 var dobYYYYMMDD = NormalizeToYYYYMMDD(GetCSVValue(record, "DOB"));
                                 if (!string.IsNullOrEmpty(dobYYYYMMDD))
@@ -241,7 +241,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
 
                                 }
 
-                                // REF segments (come *after* TRN, before AMT)
+                                // REF segments 
                                 var ft = GetCSVValue(record, "FacilityType");
                                 var cs = GetCSVValue(record, "ClaimStatus");
                                 var refgrp = GetCSVValue(record, "Group");
@@ -263,7 +263,7 @@ namespace RelayHealth.Realtime.Batch.Parser.Converter
                                 if (!string.IsNullOrEmpty(claimNumber))
                                     AddRefSegment(loop2200D, "1K", claimNumber); // Claim Control Number
 
-                                // 5 AMT*T3 (Total Submitted Charges)
+                                //  AMT*T3 (Total Submitted Charges)
                                 var amtVal = GetCSVValue(record, "TotalSubmittedCharges");
                                 if (!string.IsNullOrEmpty(amtVal))
                                 {
