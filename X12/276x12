@@ -1,19 +1,123 @@
-ISA*03*71412446  *01*Proxymed  *ZZ*770545613      *ZZ*EDISERVICES    *120215*0814*U*00401*000000001*0*P*:~
-GS*HR*770545613*EDISERVICES*20120215*081403*1*X*004010X093~
-ST*276*0001~
-BHT*0010*13*9ql7tth4m0kum_278679577_0*20120215~
-HL*1**20*1~
-NM1*PR*2*Aetna*****PI*60054~
-HL*2*1*21*1~
-NM1*41*2*Diamedix Healthcare LLC*****XX*1396744694~
-HL*3*2*19*1~
-NM1*1P*2*Diamedix Healthcare LLC*****XX*1396744694~
-HL*4*3*22*0~
-DMG*D8*19390720*M~
-NM1*QC*1*DANIELS*MICHAEL****MI*W055191038~
-TRN*1*9ql7tth4m0kum_278679577_0~
-AMT*T3*35.00~
-DTP*232*RD8*20111021-20111021~
-SE*15*0001~
-GE*1*1~
-IEA*1*000000001~
+private static void MapDependentBranch(dynamic transactionset, JObject record)
+        {
+            var loop2000E = new Loop { SegmentId = "2000E" };
+
+            var hl = new HL
+            {
+                HierarchicalIdNumber = "5",
+                HierarchicalParentIdNumber = "4",
+                HierarchicalLevelCode = "23",
+                ChildCode = "0"
+            };
+            loop2000E.AddSegment(hl);
+
+            var depDob = NormalizeToYYYYMMDD(GetCSVValue(record, "DependentDOB"));
+            if (!string.IsNullOrEmpty(depDob))
+            {
+                var dmg = new DMG();
+                dmg.DateOfBirth.FormatQualifier = "D8";
+                dmg.DateOfBirth.ParsedValue = depDob;
+                dmg.GenderCode = GetCSVValue(record, "DependentGender");
+                loop2000E.AddSegment(dmg);
+            }
+
+            var loop2100E = new Loop { SegmentId = "2100E" };
+            var nm1 = new NM1
+            {
+                EntityId = "QC",
+                EntityType = "1",
+                Last = GetCSVValue(record, "DependentLN"),
+                First = GetCSVValue(record, "DependentFN"),
+                Middle = GetCSVValue(record, "DependentMI")
+            };
+            loop2100E.AddSegment(nm1);
+            loop2000E.AddLoop(loop2100E);
+
+            var loop0E = new Loop { SegmentId = "2200E" };
+            var pan = GetCSVValue(record, "PAN");
+            if (!string.IsNullOrEmpty(pan))
+            {
+                var trn = new TRN { TraceTypeCode = "1", TraceNumber = pan };
+                loop2200E.AddSegment(trn);
+            }
+
+            var reqNum = GetCSVValue(record, "RequestNumber");
+            if (!string.IsNullOrEmpty(reqNum))
+                AddRefSegment(loop2200E, "1K", reqNum);
+
+            var ft = GetCSVValue(record, "FacilityType");
+            var cs = GetCSVValue(record, "ClaimStatus");
+            if (!string.IsNullOrEmpty(ft) && !string.IsNullOrEmpty(cs))
+                AddRefSegment(loop2200E, "BLT", ft + cs);
+            if (!string.IsNullOrEmpty(ft))
+                AddRefSegment(loop2200E, "LU", ft);
+
+            var grp = GetCSVValue(record, "Group");
+            if (!string.IsNullOrEmpty(grp))
+                AddRefSegment(loop2200E, "6P", grp);
+            if (!string.IsNullOrEmpty(pan))
+                AddRefSegment(loop2200E, "EJ", pan);
+
+            var amtVal = GetCSVValue(record, "TotalSubmittedCharges");
+            if (!string.IsNullOrEmpty(amtVal))
+            {
+                var amt = new AMT { AmountQualifierCode = "T3" };
+                amt.MonetaryAmount.ParsedValue = amtVal;
+                loop2200E.AddSegment(amt);
+            }
+
+            var startDate = NormalizeToYYYYMMDD(GetCSVValue(record, "StartDate"));
+            var endDate = NormalizeToYYYYMMDD(GetCSVValue(record, "EndDate"));
+            if (!string.IsNullOrEmpty(startDate) && !string.IsNullOrEmpty(endDate))
+            {
+                var dtp = new DTP { Qualifier = "472" };
+                dtp.Date.FormatQualifier = "RD8";
+                dtp.Date.ParsedValue = $"{startDate}-{endDate}";
+                loop2200E.AddSegment(dtp);
+            }
+            else if (!string.IsNullOrEmpty(startDate))
+            {
+                var dtp = new DTP { Qualifier = "472" };
+                dtp.Date.FormatQualifier = "D8";
+                dtp.Date.ParsedValue = startDate;
+                loop2200E.AddSegment(dtp);
+            }
+
+            var loop2210E = new Loop { SegmentId = "2210E" };
+            var svc = new SVC
+            {
+                Procedure = new ProcedureIdentifier
+                {
+                    Qualifier = GetCSVValue(record, "ProcCodeQualifier"),
+                    Code = GetCSVValue(record, "ProcCodes"),
+                    Modifier1 = GetCSVValue(record, "ProcCodeModifier")
+                }
+            };
+
+            var lineAmt = GetCSVValue(record, "LineItemChargeAmount");
+            if (!string.IsNullOrEmpty(lineAmt))
+                svc.ChargeAmount.ParsedValue = lineAmt;
+
+            var units = GetCSVValue(record, "ProcUnits");
+            if (!string.IsNullOrEmpty(units))
+                svc.OriginalUnitsOfServiceCount.ParsedValue = units;
+
+            loop2210E.AddSegment(svc);
+
+            var svcLineNo = GetCSVValue(record, "ServiceLineNumber");
+            if (!string.IsNullOrEmpty(svcLineNo))
+                AddRefSegment(loop2210E, "FJ", svcLineNo);
+
+            var procDate = NormalizeToYYYYMMDD(GetCSVValue(record, "ProcDates"));
+            if (!string.IsNullOrEmpty(procDate))
+            {
+                var svcDtp = new DTP { Qualifier = "472" };
+                svcDtp.Date.FormatQualifier = "D8";
+                svcDtp.Date.ParsedValue = procDate;
+                loop2210E.AddSegment(svcDtp);
+            }
+
+            loop2200E.AddLoop(loop2210E);
+            loop2000E.AddLoop(loop2200E);
+            transactionset.AddSegment(loop2000E);
+        }
