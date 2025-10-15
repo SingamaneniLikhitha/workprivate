@@ -1,29 +1,94 @@
 using NUnit.Framework;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Optum.Library.Realtime.Batch.Parser.Converter;
 
 namespace Optum.Library.Realtime.Batch.Tests.ParserTests
 {
     [TestFixture]
-    class CSVToX12276Test
+    public class CSVToX12276Test
     {
+        private string _tempDir;
+
         [SetUp]
         public void Setup()
         {
+            // Create a fresh temp folder for every run
+            _tempDir = Path.Combine(Path.GetTempPath(), "X12Tests");
+            Directory.CreateDirectory(_tempDir);
         }
-        [Test]
-        //public void CSVToX12276Tests()
-        //{
-        //    var date = DateTime.Now;
-        //    // Get the directory of the executing assembly
-        //    string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-        //    string testDataPath = Path.Combine(baseDirectory, "TestData");
 
-        //    CSVToX12276 CsvToX12 = new CSVToX12276();
-        //    CsvToX12.CSVToX12276Main();
-        //}
+        [Test]
+        public void Generate_Subscriber_X12_ShouldContain_2000D_HL()
+        {
+            // Arrange: write a temporary CSV file
+            string csvPath = Path.Combine(_tempDir, "Subs.csv");
+            File.WriteAllText(csvPath,
+                "TxnType,ClaimNumber,MemberID,LN,FN,DOB,Gender,ProviderID,ProviderLN,ProviderFN,PayerID,PayerName,ClaimDateFrom,ClaimDateTo,TraceNumber,TotalSubmittedCharges,FacilityType,ClaimStatus,Group,ProcCodeQualifier,ProcCodes,ProcCodeModifier,LineItemChargeAmount,ProcUnits,ServiceLineNumber,ProcDates,RelCode\n" +
+                "Claim,CLM001,MBR001,Doe,John,01011980,M,PROV123,Smith,Alan,PYR001,Optum,01012024,01022024,TRC001,150.50,11,1,GRP1,HC,99213,,150.50,1,001,01012024,18");
+
+            // Act
+            var converter = new CSVToX12276();
+            converter.CSVToX12276Main();
+
+            // Assert
+            string outputDir = "C:\\Users\\slikhith\\Documents\\new-276.";
+            string newestFile = Directory.GetFiles(outputDir, "*.txt")
+                                         .OrderByDescending(File.GetCreationTime)
+                                         .FirstOrDefault();
+
+            Assert.That(newestFile, Is.Not.Null, "No output file generated");
+            string output = File.ReadAllText(newestFile);
+
+            Assert.That(output, Does.Contain("HL*4*3*22"), "Subscriber HL missing");
+            Assert.That(output, Does.Contain("NM1*IL"), "Subscriber NM1 missing");
+            Assert.That(output, Does.Not.Contain("HL*5*4*23"), "Dependent HL found in subscriber output");
+        }
+
+        [Test]
+        public void Generate_Dependent_X12_ShouldContain_2000E_HL()
+        {
+            // Arrange
+            string csvPath = Path.Combine(_tempDir, "Dep.csv");
+            File.WriteAllText(csvPath,
+                "TxnType,ClaimNumber,MemberID,LN,FN,DOB,Gender,ProviderID,ProviderLN,ProviderFN,PayerID,PayerName,ClaimDateFrom,ClaimDateTo,TraceNumber,TotalSubmittedCharges,FacilityType,ClaimStatus,Group,ProcCodeQualifier,ProcCodes,ProcCodeModifier,LineItemChargeAmount,ProcUnits,ServiceLineNumber,ProcDates,RelCode,DependentLN,DependentFN,DependentDOB,DependentGender\n" +
+                "Claim,CLM002,MBR002,Doe,Jane,02021985,F,PROV789,Brown,Clara,PYR002,United,02012024,02022024,TRC002,200.00,12,2,GRP2,HC,99214,,200.00,1,002,02012024,19,Roe,Emily,03032010,F");
+
+            // Act
+            var converter = new CSVToX12276();
+            converter.CSVToX12276Main();
+
+            // Assert
+            string outputDir = "C:\\Users\\slikhith\\Documents\\new-276.";
+            string newestFile = Directory.GetFiles(outputDir, "*.txt")
+                                         .OrderByDescending(File.GetCreationTime)
+                                         .FirstOrDefault();
+
+            Assert.That(newestFile, Is.Not.Null, "No output file generated");
+            string output = File.ReadAllText(newestFile);
+
+            Assert.That(output, Does.Contain("HL*5*4*23"), "Dependent HL missing");
+            Assert.That(output, Does.Contain("NM1*QC"), "Dependent NM1 missing");
+            Assert.That(output, Does.Contain("DTP*472"), "Dependent DTP missing");
+        }
+
+        [Test]
+        public void NormalizeToYYYYMMDD_ShouldConvert_MMddyyyy_To_yyyyMMdd()
+        {
+            var method = typeof(CSVToX12276)
+                .GetMethod("NormalizeToYYYYMMDD", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+            string result = (string)method.Invoke(null, new object[] { "01012025" });
+
+            Assert.That(result, Is.EqualTo("20250101"));
+        }
+
+        [Test]
+        public void MissingFields_ShouldNotThrow()
+        {
+            var converter = new CSVToX12276();
+            Assert.DoesNotThrow(() => converter.CSVToX12276Main());
+        }
+    }
+}
